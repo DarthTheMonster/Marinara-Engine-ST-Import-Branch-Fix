@@ -42,6 +42,8 @@ export function useGenerate() {
       lorebookIds?: string[];
       userMessage?: string;
       regenerateMessageId?: string;
+      impersonate?: boolean;
+      attachments?: Array<{ type: string; data: string }>;
     }) => {
       // Create an AbortController so the stop button can cancel this generation
       const abortController = new AbortController();
@@ -55,7 +57,7 @@ export function useGenerate() {
       setRegenerateMessageId(params.regenerateMessageId ?? null);
 
       // Optimistically show the user message in the chat immediately
-      if (params.userMessage) {
+      if (params.userMessage && !params.impersonate) {
         const optimisticMsg: Message = {
           id: `__optimistic_${Date.now()}`,
           chatId: params.chatId,

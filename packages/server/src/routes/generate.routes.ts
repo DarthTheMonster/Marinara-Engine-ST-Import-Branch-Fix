@@ -129,8 +129,8 @@ export async function generateRoutes(app: FastifyInstance) {
       return reply.status(404).send({ error: "Chat not found" });
     }
 
-    // Save user message (if provided)
-    if (input.userMessage) {
+    // Save user message (if provided) — skip for impersonate (no real user message to save)
+    if (input.userMessage && !input.impersonate) {
       // ── Commit game state: lock in the game state the user was seeing ──
       // Find the last assistant message's active swipe and commit its game state.
       // This ensures swipes/regens always use the state from the user's accepted turn.
@@ -144,12 +144,17 @@ export async function generateRoutes(app: FastifyInstance) {
         }
       }
 
-      await chats.createMessage({
+      const userMsg = await chats.createMessage({
         chatId: input.chatId,
         role: "user",
         characterId: null,
         content: input.userMessage,
       });
+
+      // Store attachments in message extra if present
+      if (input.attachments?.length && userMsg?.id) {
+        await chats.updateMessageExtra(userMsg.id, { attachments: input.attachments });
+      }
     }
 
     // Resolve connection
@@ -214,10 +219,31 @@ export async function generateRoutes(app: FastifyInstance) {
         chatMessages = chatMessages.slice(-contextMessageLimit);
       }
 
-      const mappedMessages = chatMessages.map((m: any) => ({
-        role: m.role === "narrator" ? ("system" as const) : (m.role as "user" | "assistant" | "system"),
-        content: m.content as string,
-      }));
+      const mappedMessages = chatMessages.map((m: any) => {
+        const extra = parseExtra(m.extra);
+        const attachments = extra.attachments as Array<{ type: string; data: string }> | undefined;
+        const images = attachments?.filter((a) => a.type.startsWith("image/")).map((a) => a.data);
+        return {
+          role: m.role === "narrator" ? ("system" as const) : (m.role as "user" | "assistant" | "system"),
+          content: m.content as string,
+          ...(images?.length ? { images } : {}),
+        };
+      });
+
+      // Attach current request's images to the last user message (they're already saved in extra,
+      // but the message was just created and may be the last in mappedMessages)
+      if (input.attachments?.length && !input.impersonate) {
+        const imageAttachments = input.attachments.filter((a) => a.type.startsWith("image/")).map((a) => a.data);
+        if (imageAttachments.length) {
+          // Find the last user message and attach images
+          for (let i = mappedMessages.length - 1; i >= 0; i--) {
+            if (mappedMessages[i]!.role === "user") {
+              mappedMessages[i] = { ...mappedMessages[i]!, images: imageAttachments };
+              break;
+            }
+          }
+        }
+      }
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
 
@@ -841,6 +867,21 @@ export async function generateRoutes(app: FastifyInstance) {
         }
       }
 
+      // ── Impersonate: inject instruction to respond as the user's character ──
+      if (input.impersonate) {
+        const impersonateInstruction = [
+          `<instruction>`,
+          `You are now writing as ${personaName}, the user's character.`,
+          `Study ${personaName}'s previous messages in the conversation and replicate their voice, mannerisms, speech patterns, and style as closely as possible.`,
+          personaDescription ? `Character description: ${personaDescription}` : "",
+          `Write a single in-character response from ${personaName}'s perspective. Do NOT break character or add meta-commentary. Respond exactly as ${personaName} would.`,
+          `</instruction>`,
+        ]
+          .filter(Boolean)
+          .join("\n");
+        finalMessages.push({ role: "user", content: impersonateInstruction });
+      }
+
       let fullResponse = "";
       let fullThinking = "";
       let allResponses: string[] = [];
@@ -879,7 +920,7 @@ export async function generateRoutes(app: FastifyInstance) {
       /** Generate a single response for a given character and save it. */
       const generateForCharacter = async (
         targetCharId: string | null,
-        messagesForGen: Array<{ role: "system" | "user" | "assistant"; content: string }>,
+        messagesForGen: Array<{ role: "system" | "user" | "assistant"; content: string; images?: string[] }>,
       ) => {
         // Reset per-character accumulators
         fullResponse = "";
@@ -928,6 +969,7 @@ export async function generateRoutes(app: FastifyInstance) {
           let loopMessages: ChatMessage[] = messagesForGen.map((m) => ({
             role: m.role as "system" | "user" | "assistant",
             content: m.content,
+            ...(m.images?.length ? { images: m.images } : {}),
           }));
 
           // Extract Spotify credentials from the Spotify agent settings (if configured)
@@ -1185,7 +1227,7 @@ export async function generateRoutes(app: FastifyInstance) {
           );
         }
 
-        // Save assistant message
+        // Save assistant message (or user message for impersonate)
         let savedMsg: any;
         if (input.regenerateMessageId) {
           savedMsg = await chats.addSwipe(input.regenerateMessageId, fullResponse);
@@ -1193,8 +1235,8 @@ export async function generateRoutes(app: FastifyInstance) {
         } else {
           savedMsg = await chats.createMessage({
             chatId: input.chatId,
-            role: "assistant",
-            characterId: targetCharId,
+            role: input.impersonate ? "user" : "assistant",
+            characterId: input.impersonate ? null : targetCharId,
             content: fullResponse,
           });
         }

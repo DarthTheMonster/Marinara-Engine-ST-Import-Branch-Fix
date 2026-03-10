@@ -1539,7 +1539,7 @@ function LocationWidget({ value, onSave }: { value: string; onSave: (v: string) 
     <button
       onClick={handleClick}
       onTouchStart={handleTouchStart}
-      className={cn(WIDGET, "border-emerald-500/20 text-emerald-300")}
+      className={cn(WIDGET, "border-emerald-500/20 text-emerald-300", showTip && "z-50")}
       title={value || "Click to edit location"}
     >
       <div className="relative flex h-7 max-md:h-4 w-14 max-md:w-8 items-center justify-center shrink-0">
@@ -1632,7 +1632,7 @@ function CalendarWidget({ value, onSave }: { value: string; onSave: (v: string) 
     <button
       onClick={handleClick}
       onTouchStart={handleTouchStart}
-      className={cn(WIDGET, "border-violet-500/20 text-violet-300")}
+      className={cn(WIDGET, "border-violet-500/20 text-violet-300", showTip && "z-50")}
       title={value || "Click to edit date"}
     >
       <div className="flex h-7 max-md:h-4 w-8 max-md:w-5 flex-col rounded-sm border border-violet-400/30 overflow-hidden bg-violet-950/30 shrink-0">
@@ -1674,7 +1674,7 @@ function ClockWidget({ value, onSave }: { value: string; onSave: (v: string) => 
     <button
       onClick={handleClick}
       onTouchStart={handleTouchStart}
-      className={cn(WIDGET, "border-amber-500/20 text-amber-300")}
+      className={cn(WIDGET, "border-amber-500/20 text-amber-300", showTip && "z-50")}
       title={value || "Click to edit time"}
     >
       <div className="relative flex h-7 max-md:h-4 w-7 max-md:w-4 items-center justify-center shrink-0">
@@ -1756,7 +1756,7 @@ function WeatherWidget({ value, onSave }: { value: string; onSave: (v: string) =
     <button
       onClick={handleClick}
       onTouchStart={handleTouchStart}
-      className={cn(WIDGET, "border-sky-500/20 text-sky-300")}
+      className={cn(WIDGET, "border-sky-500/20 text-sky-300", showTip && "z-50")}
       title={value || "Click to edit weather"}
     >
       <div className="flex h-7 max-md:h-4 items-center justify-center shrink-0">
@@ -1798,7 +1798,7 @@ function TemperatureWidget({ value, onSave }: { value: string; onSave: (v: strin
     <button
       onClick={handleClick}
       onTouchStart={handleTouchStart}
-      className={cn(WIDGET, "border-rose-500/20 text-rose-300")}
+      className={cn(WIDGET, "border-rose-500/20 text-rose-300", showTip && "z-50")}
       title={value || "Click to edit temperature"}
     >
       <div className="relative flex h-7 max-md:h-4 items-center justify-center shrink-0">

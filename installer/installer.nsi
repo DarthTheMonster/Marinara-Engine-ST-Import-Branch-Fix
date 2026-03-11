@@ -30,9 +30,10 @@ Section "Install"
     DetailPrint "A command prompt window will open — follow the prompts there."
     DetailPrint ""
 
-    ; Run the bat in a visible, interactive console
-    ; Use unquoted cmd.exe and /c with quoted path — avoids Win10 CreateProcess quoting bug
-    ExecWait 'cmd.exe /c "$LOCALAPPDATA\marinara-installer\install.bat"'
+    ; Launch install.bat in its own interactive console window.
+    ; 'start "" /wait' forces a new visible console — ExecWait alone
+    ; sometimes fails to show a window when called from an NSIS GUI process.
+    ExecWait '"$SYSDIR\cmd.exe" /c start "Marinara Engine Installer" /wait "$LOCALAPPDATA\marinara-installer\install.bat"'
 
     ; Clean up
     Delete "$LOCALAPPDATA\marinara-installer\install.bat"

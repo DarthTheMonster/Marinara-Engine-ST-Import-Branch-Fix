@@ -42,8 +42,22 @@ function readMeta(): MetaStore {
   }
 }
 
+// Simple in-process queue to serialize writes to META_FILE and avoid
+// concurrent write operations that could corrupt or overwrite metadata.
+let metaWriteChain: Promise<void> = Promise.resolve();
+
 async function writeMeta(meta: MetaStore) {
-  await writeFile(META_FILE, JSON.stringify(meta, null, 2), "utf-8");
+  metaWriteChain = metaWriteChain.then(
+    async () => {
+      await writeFile(META_FILE, JSON.stringify(meta, null, 2), "utf-8");
+    },
+    // On error, reset the chain but rethrow to propagate the failure
+    async () => {
+      await writeFile(META_FILE, JSON.stringify(meta, null, 2), "utf-8");
+    }
+  );
+
+  await metaWriteChain;
 }
 
 /**

@@ -1674,7 +1674,7 @@ function WidgetLabel({
     <span className={cn("relative w-full max-md:px-0.5", className)}>
       <span
         className={cn(
-          "block max-w-[4.5rem] max-md:max-w-full truncate text-center text-[9px] max-md:text-[7px] font-semibold leading-tight",
+          "block mx-auto max-w-[4.5rem] max-md:max-w-full truncate text-center text-[9px] max-md:text-[7px] font-semibold leading-tight",
           !value && "italic opacity-40",
         )}
       >

@@ -34,7 +34,7 @@ export const characterBookEntrySchema = z.object({
   selective: z.boolean().default(false),
   secondary_keys: z.array(z.string()).default([]),
   constant: z.boolean().default(false),
-  position: z.string().default("before_char"),
+  position: z.enum(["before_char", "after_char"]).catch("before_char").default("before_char"),
 });
 
 export const characterBookSchema = z.object({

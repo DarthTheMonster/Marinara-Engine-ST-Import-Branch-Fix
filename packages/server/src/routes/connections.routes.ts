@@ -57,7 +57,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
       // Validate baseUrl against SSRF
       if (baseUrl) {
-        const urlError = validateExternalUrl(baseUrl, { allowPrivate: true });
+        const allowPrivate = process.env.MARINARA_ALLOW_PRIVATE_CONNECTION_BASE_URL === "true";
+        const urlError = validateExternalUrl(baseUrl, { allowPrivate });
         if (urlError) {
           return { success: false, message: `Base URL rejected: ${urlError}`, latencyMs: 0, modelName: null };
         }
@@ -113,7 +114,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       // Validate baseUrl against SSRF
-      const urlError = validateExternalUrl(baseUrl, { allowPrivate: true });
+      const allowPrivate = process.env.MARINARA_ALLOW_PRIVATE_CONNECTION_BASE_URL === "true";
+      const urlError = validateExternalUrl(baseUrl, { allowPrivate });
       if (urlError) {
         return reply.status(400).send({ error: `Base URL rejected: ${urlError}` });
       }

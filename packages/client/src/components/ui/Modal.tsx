@@ -21,15 +21,30 @@ export function Modal({ open, onClose, title, children, width = "max-w-md" }: Mo
   // before actually removing the DOM nodes.
   const [mounted, setMounted] = useState(false);
   const [animating, setAnimating] = useState<"enter" | "exit" | null>(null);
+  const enterRafRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (enterRafRef.current !== null) {
+      cancelAnimationFrame(enterRafRef.current);
+      enterRafRef.current = null;
+    }
+
     if (open) {
       setMounted(true);
       // Start enter animation on next frame so the DOM is present
-      requestAnimationFrame(() => setAnimating("enter"));
+      enterRafRef.current = requestAnimationFrame(() => {
+        setAnimating("enter");
+      });
     } else if (mounted) {
       setAnimating("exit");
     }
+
+    return () => {
+      if (enterRafRef.current !== null) {
+        cancelAnimationFrame(enterRafRef.current);
+        enterRafRef.current = null;
+      }
+    };
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close on Escape

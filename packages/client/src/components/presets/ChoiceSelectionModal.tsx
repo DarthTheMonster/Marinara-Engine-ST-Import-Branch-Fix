@@ -4,7 +4,7 @@
 // to a chat — user picks option(s) per variable.
 // Supports single-select and multi-select modes.
 // ──────────────────────────────────────────────
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { Modal } from "../ui/Modal";
 import { usePresetFull, useUpdatePreset } from "../../hooks/use-presets";
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
@@ -106,11 +106,12 @@ export function ChoiceSelectionModal({
   // Reset when modal re-opens so stale overrides don't persist.
   const [overrides, setOverrides] = useState<Record<string, string | string[]>>({});
   const prevOpenRef = useRef(false);
-  if (open && !prevOpenRef.current) {
-    // Synchronous reset — no extra render since overrides is already {} on first mount
-    if (Object.keys(overrides).length > 0) setOverrides({});
-  }
-  prevOpenRef.current = open;
+  useEffect(() => {
+    if (open && !prevOpenRef.current) {
+      setOverrides({});
+    }
+    prevOpenRef.current = open;
+  }, [open]);
 
   // Merged view: base + user overrides
   const selections = useMemo(() => ({ ...baseSelections, ...overrides }), [baseSelections, overrides]);
@@ -125,7 +126,7 @@ export function ChoiceSelectionModal({
     // Save selections to chat metadata
     updateMetadata.mutate({ id: chatId, presetChoices: selections }, { onSuccess: () => onClose() });
     // Optionally save as default for this preset
-    if (saveAsDefault) {
+    if (saveAsDefault && presetId) {
       updatePreset.mutate({ id: presetId, defaultChoices: selections });
     }
   }, [chatId, presetId, selections, saveAsDefault, updateMetadata, updatePreset, onClose]);

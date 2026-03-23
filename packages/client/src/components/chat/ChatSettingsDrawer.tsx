@@ -1383,7 +1383,7 @@ export function ChatSettingsDrawer({ chat, open, onClose }: ChatSettingsDrawerPr
                   ))}
               </select>
               <p className="mt-1 text-[0.55rem] text-[var(--muted-foreground)]">
-                The selected connection must have an Embedding Model configured.
+                If the selected connection has no Embedding Model, the chat&apos;s main connection model is used as fallback.
               </p>
             </Section>
           )}

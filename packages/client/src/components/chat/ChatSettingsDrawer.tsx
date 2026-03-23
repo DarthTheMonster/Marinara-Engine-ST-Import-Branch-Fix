@@ -1353,41 +1353,6 @@ export function ChatSettingsDrawer({ chat, open, onClose }: ChatSettingsDrawerPr
             </Section>
           )}
 
-          {/* Embedding Connection — lets users use a different provider for embeddings */}
-          {!isConversation && (
-            <Section
-              label="Embedding Connection"
-              icon={<Brain size="0.875rem" />}
-              help="Optionally use a different connection for generating embeddings (lorebook semantic matching). If not set, the chat's main connection is used."
-            >
-              <select
-                value={(metadata.embeddingConnectionId as string) ?? ""}
-                onChange={(e) => updateMeta.mutate({ id: chat.id, embeddingConnectionId: e.target.value || null })}
-                className="w-full rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]/40"
-              >
-                <option value="">Same as chat connection</option>
-                {(
-                  (connections ?? []) as Array<{
-                    id: string;
-                    name: string;
-                    provider: string;
-                    embeddingModel: string | null;
-                  }>
-                )
-                  .filter((c) => c.provider !== "image_generation")
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                      {c.embeddingModel ? ` (${c.embeddingModel})` : ""}
-                    </option>
-                  ))}
-              </select>
-              <p className="mt-1 text-[0.55rem] text-[var(--muted-foreground)]">
-                If the selected connection has no Embedding Model, the chat&apos;s main connection model is used as fallback.
-              </p>
-            </Section>
-          )}
-
           {/* Agents — hidden for conversation mode */}
           {!isConversation && (
             <Section

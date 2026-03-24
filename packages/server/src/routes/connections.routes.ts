@@ -5,7 +5,6 @@ import type { FastifyInstance } from "fastify";
 import { createConnectionSchema } from "@marinara-engine/shared";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
-import { validateExternalUrl } from "../utils/url-validation.js";
 
 export async function connectionsRoutes(app: FastifyInstance) {
   const storage = createConnectionsStorage(app.db);
@@ -55,15 +54,6 @@ export async function connectionsRoutes(app: FastifyInstance) {
       const provider = PROVIDERS[conn.provider as keyof typeof PROVIDERS];
       const baseUrl = conn.baseUrl || provider?.defaultBaseUrl || "";
 
-      // Validate baseUrl against SSRF
-      if (baseUrl) {
-        const allowPrivate = process.env.MARINARA_ALLOW_PRIVATE_CONNECTION_BASE_URL === "true";
-        const urlError = validateExternalUrl(baseUrl, { allowPrivate });
-        if (urlError) {
-          return { success: false, message: `Base URL rejected: ${urlError}`, latencyMs: 0, modelName: null };
-        }
-      }
-
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (provider?.usesAuthHeader) {
         headers["Authorization"] = `Bearer ${conn.apiKey}`;
@@ -111,13 +101,6 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
       if (!baseUrl) {
         return reply.status(400).send({ error: "No base URL configured" });
-      }
-
-      // Validate baseUrl against SSRF
-      const allowPrivate = process.env.MARINARA_ALLOW_PRIVATE_CONNECTION_BASE_URL === "true";
-      const urlError = validateExternalUrl(baseUrl, { allowPrivate });
-      if (urlError) {
-        return reply.status(400).send({ error: `Base URL rejected: ${urlError}` });
       }
 
       const headers: Record<string, string> = { "Content-Type": "application/json" };

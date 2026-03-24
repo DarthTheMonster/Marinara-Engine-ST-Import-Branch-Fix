@@ -3,7 +3,6 @@
 // ──────────────────────────────────────────────
 import type { LLMToolCall } from "../llm/base-provider.js";
 import vm from "node:vm";
-import { validateExternalUrl } from "../../utils/url-validation.js";
 
 export interface ToolExecutionResult {
   toolCallId: string;
@@ -128,8 +127,6 @@ async function executeCustomTool(tool: CustomToolDef, args: Record<string, unkno
 
     case "webhook": {
       if (!tool.webhookUrl) return { error: "No webhook URL configured" };
-      const urlError = validateExternalUrl(tool.webhookUrl);
-      if (urlError) return { error: `Webhook URL rejected: ${urlError}` };
       try {
         const res = await fetch(tool.webhookUrl, {
           method: "POST",

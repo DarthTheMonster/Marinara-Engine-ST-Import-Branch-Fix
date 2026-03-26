@@ -331,6 +331,8 @@ function extractFirstFileFromZip(zip: Uint8Array): Uint8Array | null {
   const lhExtraLen = zip[lh + 28]! | (zip[lh + 29]! << 8);
   const dataStart = lh + 30 + lhFnLen + lhExtraLen;
 
+  const dataSize = method === 0 ? uncompSize : compSize;
+  if (dataStart + dataSize > zip.length) return null;
   if (method === 0) {
     // Stored (no compression)
     return zip.slice(dataStart, dataStart + uncompSize);

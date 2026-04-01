@@ -56,90 +56,61 @@
 
 ---
 
-## Changelog
+## Latest Release
 
-### v1.4.6
+Current stable release: **[v1.4.6](https://github.com/SpicyMarinara/Marinara-Engine/releases/tag/v1.4.6)**.
 
-**New Features:**
+Detailed release notes now live in [CHANGELOG.md](CHANGELOG.md). Tagged releases use the `vX.Y.Z` format, and GitHub Releases remain the publication mechanism for installers, release notes, and update metadata.
 
-- **Bot Browser** — Browse, search, and one-click import characters from Chub.ai directly inside the app. Includes paginated grid view, sort by downloads/stars/trending, NSFW filter toggle, and full character detail preview (personality, description, first message, scenario, example dialogues, alternate greetings).
-- **Chat Folders** — Organize chats into named, color-coded folders with drag-and-drop reorder. Move chats between folders, collapse/expand, and filter by mode (conversation/roleplay/visual novel). Fully persisted server-side.
-- **Slash Commands** — SillyTavern-style command system with autocomplete: `/roll` (dice notation), `/sys`, `/narrator`, `/continue`, `/as <character>`, `/impersonate`, `/remind <time> <message>`, `/random`, `/scene` (AI-planned scene branching), and `/help`.
-- **AI Lorebook Maker** — Generate structured lorebook entries from a topic prompt using your LLM connection. Streams results via SSE with batch support for large requests and auto-attaches entries to existing lorebooks.
-- **Connection Duplicate & Test** — Clone existing connections (including encrypted API keys) and test connectivity with provider-specific pings (ComfyUI, AUTOMATIC1111, NovelAI, and standard OpenAI-compatible endpoints).
-- **ComfyUI Custom Workflows** — Paste custom ComfyUI workflow JSON with `%prompt%`, `%negative_prompt%`, `%width%`, `%height%`, `%seed%`, and `%model%` placeholders. A default txt2img workflow is provided as fallback.
-- **OpenRouter Provider Preference** — Select a preferred upstream provider (e.g. Anthropic, Google) when routing through OpenRouter.
-- **Expanded Image Generation** — Added Pollinations (free, no API key), Stability AI (SD3), Together AI (FLUX), NovelAI (native v4 + proxy/LinkAPI fallback), ComfyUI, and AUTOMATIC1111/SD Web UI backends alongside OpenAI/DALL-E.
-- **Plain Text Chat Export** — Export chat history as readable plain text alongside the existing JSONL format.
-- **Embedding Base URL** — Configurable per-connection base URL for embedding endpoints, allowing separate embedding servers.
+## Project Docs
 
-**Improvements:**
-
-- **Performance — Streaming Re-render Optimization** — Extracted `StreamingIndicator` and `RegeneratingMessageContent` into self-contained components that subscribe to the stream buffer independently. The main `ChatArea` no longer re-renders on every token (~30–60×/sec), drastically reducing CPU usage during streaming.
-- **Performance — Zustand Selector Batching** — Combined individual `useUIStore` selectors in `ChatMessage` into a single shallow-compared selector via `useShallow`, and memoized style objects to avoid recreating them on every render.
-- **Performance — Debounced UI Persistence** — UI store `localStorage` writes are now debounced (1 s) with a `beforeunload`/`visibilitychange` flush to prevent data loss on tab close.
-- **Chat Text Appearance** — Unified chat text color with a single setting and a default text stroke width of 0.5 px.
-- **Folder UX** — New folders are created at the top of the list, folders render above unfiled chats, and folder rows use inline rename-on-click + a trash icon on hover.
-- **Roleplay Input Responsiveness** — Responsive padding/gap on the input bar, `min-w-0` on the textarea to prevent flex overflow, and `shrink-0` on the send button.
-- **Home Page Mobile Layout** — Reduced padding on mobile, constrained content width, and responsive QuickStart cards.
-- **Tracker Injection Order** — Tracker data now injects before the Output Format section for correct prompt ordering.
-- **Settings Panel Polish** — Renamed reset buttons to "Reset to default", removed redundant labels, and consolidated reset actions.
-
-**Bug Fixes:**
-
-- **Fixed infinite re-render loop** — The combined Zustand object selector in `ChatMessage` returned a new reference every render, bypassing `memo()` and causing "Maximum update depth exceeded". Fixed by wrapping with `useShallow()`.
-- **Fixed message background opacity** — Roleplay message bubbles used `rgba(0,0,0,…)` instead of the correct `rgba(23,23,23,…)` matching Tailwind's `bg-neutral-900/70` and `bg-neutral-900/60`.
-- **Fixed new folders appearing at the bottom** — Two-part fix: server assigns `sortOrder: 0` to new folders (shifting existing ones down), and the client renders folders before unfiled chats.
-- **Fixed missing DB column migrations** — Added `openrouter_provider`, `comfyui_workflow`, and `embedding_base_url` to `COLUMN_MIGRATIONS` so they auto-create on startup.
-- **Fixed combat encounter `parseJSON`** — Corrected escape-sequence detection and added 3-level sanitization for AI responses in the combat agent.
-- **And more…**
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contributor workflow, validation, versioning, and release steps
+- [CLAUDE.md](CLAUDE.md) — thin maintainer notes for contributors using Claude
+- [CHANGELOG.md](CHANGELOG.md) — release notes source of truth
+- [android/README.md](android/README.md) — Android WebView wrapper guide
 
 ---
 
 ## Installation
 
-## Windows EASIEST METHOD
+### Windows Easiest Method
 
 Download **[Marinara-Engine-Installer-1.4.6.exe](https://github.com/SpicyMarinara/Marinara-Engine/releases/download/v1.4.6/Marinara-Engine-Installer-1.4.6.exe)** from the [Releases](https://github.com/SpicyMarinara/Marinara-Engine/releases) page and run it. The installer checks for Node.js and Git, clones the repo, installs dependencies, builds the app, and creates a desktop shortcut.
 
----
-
-## Alternatives
-
 ### Run from Source (All Platforms)
 
-### Prerequisites
+#### Prerequisites
 
-You need **Node.js** and **Git** installed before running Marinara Engine. pnpm is handled automatically by the start script.
+You need **Node.js** and **Git** installed before running Marinara Engine. pnpm is handled automatically by the shell launchers, or you can install it yourself for manual setup.
 
 **Install Node.js v20+:**
 
-| Platform              | How to Install                                                                                  |
-| --------------------- | ----------------------------------------------------------------------------------------------- |
-| Windows               | Download the installer from [nodejs.org](https://nodejs.org/en/download) and run it             |
-| macOS                 | `brew install node` or download from [nodejs.org](https://nodejs.org/en/download)               |
+| Platform | How to Install |
+| --- | --- |
+| Windows | Download the installer from [nodejs.org](https://nodejs.org/en/download) and run it |
+| macOS | `brew install node` or download from [nodejs.org](https://nodejs.org/en/download) |
 | Linux (Ubuntu/Debian) | `curl -fsSL https://deb.nodesource.com/setup_22.x \| sudo bash - && sudo apt install -y nodejs` |
-| Linux (Fedora)        | `sudo dnf install -y nodejs`                                                                    |
-| Linux (Arch)          | `sudo pacman -S nodejs npm`                                                                     |
+| Linux (Fedora) | `sudo dnf install -y nodejs` |
+| Linux (Arch) | `sudo pacman -S nodejs npm` |
 
 **Install Git:**
 
-| Platform              | How to Install                                                                      |
-| --------------------- | ----------------------------------------------------------------------------------- |
-| Windows               | Download from [git-scm.com](https://git-scm.com/download/win) and run the installer |
-| macOS                 | `brew install git` or install Xcode Command Line Tools: `xcode-select --install`    |
-| Linux (Ubuntu/Debian) | `sudo apt install -y git`                                                           |
-| Linux (Fedora)        | `sudo dnf install -y git`                                                           |
-| Linux (Arch)          | `sudo pacman -S git`                                                                |
+| Platform | How to Install |
+| --- | --- |
+| Windows | Download from [git-scm.com](https://git-scm.com/download/win) and run the installer |
+| macOS | `brew install git` or install Xcode Command Line Tools: `xcode-select --install` |
+| Linux (Ubuntu/Debian) | `sudo apt install -y git` |
+| Linux (Fedora) | `sudo dnf install -y git` |
+| Linux (Arch) | `sudo pacman -S git` |
 
 Verify both are installed:
 
 ```bash
-node -v   # should show v20 or higher
-git -v    # should show git version 2.x+
+node -v        # should show v20 or higher
+git --version  # should show git version 2.x+
 ```
 
-### Quick Start
+#### Quick Start
 
 **Windows:**
 
@@ -166,22 +137,24 @@ Install [Termux](https://f-droid.org/en/packages/com.termux/) from F-Droid (the 
 pkg update && pkg install -y git nodejs-lts && npm install -g pnpm && git clone https://github.com/SpicyMarinara/marinara-engine.git && cd marinara-engine && chmod +x start-termux.sh && ./start-termux.sh
 ```
 
-The Termux launcher handles everything automatically — it downloads a prebuilt native module, installs dependencies, builds the app, and starts the server at `http://localhost:7860`. First run takes a few minutes on mobile. After that, just run `./start-termux.sh` to start.
+The Termux launcher downloads the prebuilt SQLite native module when available, installs dependencies, builds the app, and starts the server at `http://localhost:7860`. First run takes a few minutes on mobile. After that, run `./start-termux.sh` to start again.
 
-> **Tip:** Install the PWA — tap the browser menu and "Add to Home Screen" for a native app feel.
+If you also want a dedicated Android app shell, see [android/README.md](android/README.md). The APK is a WebView wrapper around the Termux-served app; it does not replace the server.
 
-The shell launchers will:
+> **Tip:** Install the PWA from your browser's "Add to Home Screen" prompt for a more native feel.
 
-1. **Auto-update** from Git (if a `.git` folder is detected)
+When started from a git checkout, the shell launchers will:
+
+1. **Auto-update** from Git if a `.git` folder is detected
 2. Check that Node.js and pnpm are installed
-3. Install all dependencies (first run only)
+3. Install all dependencies on first run
 4. Build the application
-5. Initialize the database
+5. Ensure the database schema is up to date
 6. Start the server and open `http://localhost:7860` in your browser by default
 
 Set `AUTO_OPEN_BROWSER=false` in `.env` to skip the automatic browser launch. This applies to the shell launchers (`start.bat`, `start.sh`, and `start-termux.sh`) only. The Android wrapper uses its own WebView.
 
-### Manual Setup
+#### Manual Setup
 
 ```bash
 git clone https://github.com/SpicyMarinara/marinara-engine.git
@@ -192,31 +165,31 @@ pnpm db:push
 pnpm start
 ```
 
-Then open **<http://localhost:7860>**. That's it — no account, no cloud, everything runs locally.
+Then open **<http://localhost:7860>**. Everything runs locally.
 
 ### Updating
 
-**Updates are automatic.** Every time you launch Marinara Engine via `start.sh`, `start.bat`, or `start-termux.sh`, the launcher:
+Git-based installs update automatically. If you launch Marinara Engine via `start.sh`, `start.bat`, or `start-termux.sh` from a git checkout, the launcher:
 
-1. Pulls the latest code from GitHub (`git pull`)
-2. Detects if anything changed
-3. Reinstalls dependencies and rebuilds automatically
-4. Runs database migrations
+1. Pulls the latest code from GitHub with `git pull`
+2. Detects whether the checkout changed
+3. Reinstalls dependencies and rebuilds when needed
+4. Starts the app on the current version
 
-**You don't need to do anything** — just launch the app as usual, and you'll always be on the latest version.
+This includes installs created by the Windows installer, because the installer clones the repository and keeps the `.git` directory.
 
-This works for all platforms: Windows (installer or manual), macOS, Linux, and Termux.
+In-app update checks read the latest GitHub Release tag. If you use Docker, the app shows the pull command instead of updating automatically. Docker images are published from `v*` tags.
 
 #### In-App Update Check
 
-You can also check for updates without restarting. Go to **Settings → Advanced → Updates** and click **Check for Updates**. If a new version is available you'll see the release notes and:
+Go to **Settings → Advanced → Updates** and click **Check for Updates**. If a new version is available:
 
 - **Git installs** — Click **Apply Update** to pull, rebuild, and restart the server automatically.
 - **Docker** — The UI shows the command to run: `docker compose pull && docker compose up -d`.
 
 #### Manual Update
 
-If you don't use the start scripts or the in-app updater:
+If you use a git checkout without the shell launchers or the in-app updater:
 
 ```bash
 git pull
@@ -234,21 +207,19 @@ Then restart the server.
 If you're running Marinara Engine on your computer and want to use it from your phone or tablet on the same network:
 
 1. **Find your computer's local IP address:**
-   - **Windows:** Open a terminal and run `ipconfig` — look for `IPv4 Address` (usually something like `192.168.x.x`)
-   - **macOS:** Go to System Settings → Wi-Fi → click your network → look for `IP Address`, or run `ipconfig getifaddr en0`
+   - **Windows:** Run `ipconfig` and look for `IPv4 Address`
+   - **macOS:** Check System Settings → Wi-Fi → your network, or run `ipconfig getifaddr en0`
    - **Linux:** Run `hostname -I` or `ip addr`
-
-2. **Open a browser on your phone** (Chrome, Brave, Safari, etc.) and go to:
+2. **Open a browser on your phone** and go to:
 
    ```
    http://<your-computer-ip>:7860
    ```
 
-   For example: `http://192.168.1.42:7860`
+   Example: `http://192.168.1.42:7860`
+3. **Install the PWA** from your browser for a more native app experience.
 
-3. **Install the PWA** — tap the browser menu and "Add to Home Screen" for a native app feel.
-
-> **Tip:** If you're not on the same Wi-Fi, tools like [Tailscale](https://tailscale.com/) give each device a stable IP address on a private network — install it on both devices, then use your computer's Tailscale IP instead.
+> **Tip:** If you're not on the same network, tools like [Tailscale](https://tailscale.com/) give each device a stable IP address on a private network.
 
 ---
 
@@ -265,17 +236,21 @@ pnpm dev:server
 pnpm dev:client
 ```
 
+Contributor workflow, validation, and release/version policy live in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ---
 
 ## Features
 
 ### Chat & Roleplay
 
-- **Three Chat Modes** — Conversation (Discord-style), Roleplay (immersive RPG), Game (Coming Soon)
-- **Plug-And-Play** — I couldn't have made it easier for you.
-- **A Connected System** — All chats can be connected, your characters carry memories between them and are aware of them. It's an immersive system that aims to make you feel like you're chatting with real people.
+- **Three Chat Modes** — Conversation (Discord-style), Roleplay (immersive RPG), Game (coming soon)
+- **Plug-And-Play** — Minimal setup and local-first defaults
+- **A Connected System** — Chats can share memory and context across modes
 - **Character Management** — Create or import characters with avatars, personalities, backstories, and system prompts
-- **Avatar Zoom & Repositioning** — Crop and reposition character avatars with a zoom slider and drag-to-pan, applied everywhere avatars appear
+- **Bot Browser** — Search and import characters from Chub.ai directly inside the app
+- **Chat Folders** — Organize chats into named, color-coded folders
+- **Avatar Zoom & Repositioning** — Crop and reposition character avatars with a zoom slider and drag-to-pan
 - **Persona System** — User personas with custom names, avatars, and descriptions
 - **Group Chats** — Multiple characters in a single conversation
 - **Chat Branching** — Branch conversations at any message and explore different paths
@@ -287,63 +262,65 @@ pnpm dev:client
 
 - **Sprite System** — Character expression sprites with automatic emotion-based switching
 - **Custom Backgrounds** — Upload backgrounds with per-scene switching
-- **Weather Effects** — Dynamic weather overlays (rain, snow, fog, etc.)
+- **Weather Effects** — Dynamic weather overlays (rain, snow, fog, and more)
 - **Two Visual Themes** — Y2K Marinara theme and a faithful SillyTavern classic theme
-- **Light & Dark Mode** — One is obviously superior.
+- **Light & Dark Mode** — Both are supported
 
 ### AI Agent System (25 Built-In)
 
 Agents are autonomous AI assistants that run alongside your chat, each handling a specific task:
 
-| Agent                     | What It Does                                                                 |
-| ------------------------- | ---------------------------------------------------------------------------- |
-| **World State**           | Tracks date/time, weather, location, and present characters                  |
-| **Quest Tracker**         | Manages quest objectives, completion, and rewards                            |
-| **Character Tracker**     | Monitors character moods, relationships, appearance, outfit, and stats       |
-| **Persona Stats**         | Tracks your protagonist's needs and condition bars (Satiety, Energy, etc.)   |
-| **Custom Tracker**        | Tracks user-defined fields — currencies, counters, flags, or any custom data |
-| **Narrative Director**    | Introduces events, NPCs, and plot beats to keep the story moving             |
-| **Prose Guardian**        | Analyzes writing patterns and generates directives to improve prose variety  |
-| **Continuity Checker**    | Detects contradictions with established lore and facts                       |
-| **Combat**                | Turn-based RPG combat with initiative, HP tracking, and actions              |
-| **Expression Engine**     | Detects emotions and selects character sprites                               |
-| **Background**            | Picks the best background image for the current scene                        |
-| **Echo Chamber**          | Simulates a live-stream chat reacting to your roleplay                       |
-| **Prompt Reviewer**       | Reviews and scores the assembled prompt before generation                    |
-| **Illustrator**           | Generates image prompts for key scenes                                       |
-| **Lorebook Keeper**       | Automatically creates and updates lorebook entries                           |
-| **Immersive HTML**        | Injects styled HTML/CSS/JS for in-world visuals (letters, terminals, etc.)   |
-| **Consistency Editor**    | Edits responses to fix factual errors and tracker contradictions             |
-| **Spotify DJ**            | Controls Spotify playback to match the scene's mood                          |
-| **Chat Summary**          | Generates condensed rolling summaries of long conversations                  |
-| **Knowledge Retrieval**   | Scans lorebooks for relevant context using chunked RAG                       |
-| **Schedule Planner**      | Generates realistic weekly schedules for characters in Conversation mode     |
-| **Response Orchestrator** | Decides which character(s) should respond in group Conversations             |
-| **Love Toys Control**     | Controls Buttplug.io haptic devices with per-device capability awareness     |
-| **CYOA Choices**          | Generates 2–4 in-character choices for the player after each response        |
-| **Autonomous Messenger**  | Allows characters to send messages unprompted when the user is inactive      |
+| Agent | What It Does |
+| --- | --- |
+| **World State** | Tracks date, time, weather, location, and present characters |
+| **Quest Tracker** | Manages quest objectives, completion, and rewards |
+| **Character Tracker** | Monitors character moods, relationships, appearance, outfit, and stats |
+| **Persona Stats** | Tracks your protagonist's needs and condition bars |
+| **Custom Tracker** | Tracks user-defined fields such as currencies, counters, and flags |
+| **Narrative Director** | Introduces events, NPCs, and plot beats to keep the story moving |
+| **Prose Guardian** | Analyzes writing patterns and generates directives to improve prose variety |
+| **Continuity Checker** | Detects contradictions with established lore and facts |
+| **Combat** | Handles turn-based RPG combat with initiative, HP tracking, and actions |
+| **Expression Engine** | Detects emotions and selects character sprites |
+| **Background** | Picks the best background image for the current scene |
+| **Echo Chamber** | Simulates a live-stream chat reacting to your roleplay |
+| **Prompt Reviewer** | Reviews and scores the assembled prompt before generation |
+| **Illustrator** | Generates image prompts for key scenes |
+| **Lorebook Keeper** | Automatically creates and updates lorebook entries |
+| **Immersive HTML** | Injects styled HTML, CSS, and JS for in-world visuals |
+| **Consistency Editor** | Edits responses to fix factual errors and tracker contradictions |
+| **Spotify DJ** | Controls Spotify playback to match the scene's mood |
+| **Chat Summary** | Generates condensed rolling summaries of long conversations |
+| **Knowledge Retrieval** | Scans lorebooks for relevant context using chunked RAG |
+| **Schedule Planner** | Generates realistic weekly schedules for characters in Conversation mode |
+| **Response Orchestrator** | Decides which character or characters should respond in group conversations |
+| **Love Toys Control** | Controls Buttplug.io haptic devices with per-device capability awareness |
+| **CYOA Choices** | Generates 2 to 4 in-character choices after each response |
+| **Autonomous Messenger** | Allows characters to send messages unprompted when the user is inactive |
 
-All agents are disabled by default — enable only the ones you want. You can also create **custom agents** with your own prompts and tool configurations.
+All agents are disabled by default. Enable only the ones you want, or create custom agents with your own prompts and tool configurations.
 
 ### Prompt Engineering
 
-- **Preset System** — Save and load full prompt configurations (system prompt sections, sampling parameters, etc.)
-- **Prompt Sections** — Modular prompt builder with drag-and-drop ordering, depth injection, and per-section toggles
+- **Preset System** — Save and load full prompt configurations
+- **Prompt Sections** — Drag-and-drop ordering, depth injection, and per-section toggles
 - **Lorebooks** — World-building entries with keyword triggers that inject context automatically
+- **AI Lorebook Maker** — Generate structured lorebook entries from a topic prompt
 - **World Info Inspector** — Live view of active lorebook entries in the current chat, with token usage and keyword details
 - **Lorebook Token Counts & Sorting** — Estimated token counts per entry, sortable by order, name, tokens, or keys
-- **Regex Scripts** — Custom text processing with regex find/replace on inputs and outputs
+- **Regex Scripts** — Custom text processing with regex find or replace on inputs and outputs
 - **Macro System** — Template variables like `{{char}}`, `{{user}}`, `{{time}}`, and agent markers
 
 ### Connections & Providers
 
-- **Multi-Provider** — OpenAI, Anthropic, Google, OpenRouter, Mistral, Cohere, and any custom OpenAI-compatible endpoint
+- **Multi-Provider** — OpenAI, Anthropic, Google, OpenRouter, Mistral, Cohere, Pollinations, Stability AI, Together AI, NovelAI, ComfyUI, AUTOMATIC1111 / SD Web UI, and custom OpenAI-compatible endpoints
 - **Encrypted API Keys** — API keys are encrypted at rest with AES-256
 - **Per-Chat Overrides** — Different presets and connections per chat
+- **Connection Duplication & Testing** — Clone connections and validate provider-specific connectivity
 
 ### Export & Data
 
-- **Export Chats** — Save as JSON or Markdown
+- **Export Chats** — Save chats as JSONL or plain text
 - **Fully Local** — SQLite database, all data stays on your machine
 - **No Account Required** — Just install and go
 
@@ -353,18 +330,18 @@ All agents are disabled by default — enable only the ones you want. You can al
 
 Copy `.env.example` to `.env` to customize:
 
-| Variable         | Default                          | Description                                                                                                                                                   |
-| ---------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`           | `7860`                           | Server port                                                                                                                                                   |
-| `HOST`           | `0.0.0.0`                        | Bind address                                                                                                                                                  |
-| `AUTO_OPEN_BROWSER` | `true`                        | Whether the shell launchers auto-open the local app URL. Set to `false`, `0`, `no`, or `off` to disable. Does not apply to the Android WebView wrapper. |
-| `DATABASE_URL`   | `file:./data/marinara-engine.db` | SQLite database path                                                                                                                                          |
-| `ENCRYPTION_KEY` | _(empty)_                        | AES key for API key encryption (generate with `openssl rand -hex 32`)                                                                                         |
-| `LOG_LEVEL`      | `info`                           | Logging verbosity                                                                                                                                             |
-| `CORS_ORIGINS`   | `http://localhost:5173`          | Allowed CORS origins                                                                                                                                          |
-| `SSL_CERT`       | _(empty)_                        | Path to TLS certificate (e.g., `fullchain.pem`). Set both `SSL_CERT` and `SSL_KEY` to enable HTTPS                                                            |
-| `SSL_KEY`        | _(empty)_                        | Path to TLS private key (e.g. `privkey.pem`)                                                                                                                  |
-| `IP_ALLOWLIST`   | _(empty)_                        | Comma-separated IPs or CIDRs to allow (e.g. `192.168.1.100,10.0.0.0/24`). When set, all other IPs are blocked. Loopback (`127.0.0.1`/`::1`) is always allowed |
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PORT` | `7860` | Server port |
+| `HOST` | `0.0.0.0` | Bind address |
+| `AUTO_OPEN_BROWSER` | `true` | Whether the shell launchers auto-open the local app URL. Set to `false`, `0`, `no`, or `off` to disable. Does not apply to the Android WebView wrapper. |
+| `DATABASE_URL` | `file:./data/marinara-engine.db` | SQLite database path |
+| `ENCRYPTION_KEY` | _(empty)_ | AES key for API key encryption (generate with `openssl rand -hex 32`) |
+| `LOG_LEVEL` | `info` | Logging verbosity |
+| `CORS_ORIGINS` | `http://localhost:5173` | Allowed CORS origins |
+| `SSL_CERT` | _(empty)_ | Path to the TLS certificate. Set both `SSL_CERT` and `SSL_KEY` to enable HTTPS. |
+| `SSL_KEY` | _(empty)_ | Path to the TLS private key |
+| `IP_ALLOWLIST` | _(empty)_ | Comma-separated IPs or CIDRs to allow. Loopback is always allowed. |
 
 ---
 
@@ -373,23 +350,27 @@ Copy `.env.example` to `.env` to customize:
 ```text
 marinara-engine/
 ├── packages/
-│   ├── shared/      # TypeScript types, schemas, constants
-│   ├── server/      # Fastify API + SQLite database + AI agents
-│   └── client/      # React frontend (Vite + Tailwind v4)
-├── start.bat        # Windows launcher
-├── start.sh         # macOS/Linux launcher
-└── .env.example     # Environment template
+│   ├── client/       # React frontend (Vite + Tailwind v4)
+│   ├── server/       # Fastify API, SQLite database, AI agents, update routes
+│   └── shared/       # Shared types, schemas, constants, version data
+├── android/          # Android WebView wrapper for the Termux-served app
+├── installer/        # Windows installer sources and scripts
+├── docs/             # Screenshots and supporting docs assets
+├── start.bat         # Windows launcher
+├── start.sh          # macOS/Linux launcher
+├── start-termux.sh   # Termux launcher
+└── .env.example      # Environment template
 ```
 
 ## Tech Stack
 
-| Layer    | Technology                                                     |
-| -------- | -------------------------------------------------------------- |
+| Layer | Technology |
+| --- | --- |
 | Frontend | React 19, Tailwind CSS v4, Framer Motion, Zustand, React Query |
-| Backend  | Fastify 5, Drizzle ORM, SQLite                                 |
-| PWA      | vite-plugin-pwa, Web App Manifest                              |
-| Shared   | TypeScript 5, Zod                                              |
-| Build    | Vite 6, pnpm workspaces                                        |
+| Backend | Fastify 5, Drizzle ORM, SQLite |
+| PWA | vite-plugin-pwa, Web App Manifest |
+| Shared | TypeScript 5, Zod |
+| Build | Vite 6, pnpm workspaces |
 
 ---
 
@@ -397,29 +378,13 @@ marinara-engine/
 
 ### Windows: `EPERM: operation not permitted` when installing pnpm
 
-If you see an error like `EPERM: operation not permitted, open 'C:\Program Files\nodejs\yarnpkg'` or a corepack signature verification failure, this is a Windows permissions issue — corepack can't write to `C:\Program Files\nodejs\`.
+If you see an error like `EPERM: operation not permitted, open 'C:\Program Files\nodejs\yarnpkg'` or a corepack signature verification failure, corepack could not write to `C:\Program Files\nodejs\`.
 
-**Fix (pick one):**
+**Fix one of these:**
 
-1. **Run as Administrator** — Right-click your terminal (CMD or PowerShell) and select "Run as administrator", then run `start.bat` again.
-
-2. **Install pnpm manually** (recommended — avoids corepack entirely):
-
-   ```bash
-   npm install -g pnpm
-   ```
-
-   Then run `start.bat` again.
-
-3. **Update corepack** (if you want to keep using it):
-
-   ```bash
-   npm install -g corepack
-   corepack enable
-   corepack prepare pnpm@latest --activate
-   ```
-
-   Run these in an Administrator terminal.
+1. **Run as Administrator** — Right-click your terminal (CMD or PowerShell), select "Run as administrator", then run `start.bat` again.
+2. **Install pnpm manually** — Run `npm install -g pnpm`, then run `start.bat` again.
+3. **Update corepack** — Run `npm install -g corepack`, `corepack enable`, and `corepack prepare pnpm@latest --activate` in an Administrator terminal.
 
 ---
 

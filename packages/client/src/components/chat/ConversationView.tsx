@@ -671,7 +671,14 @@ export function ConversationView({
             // "X is typing..." indicator at the bottom provides visual feedback instead
             // of showing bouncing dots inside the message bubble.
             const hasStreamContent = isRegenerating && !!streamBuffer;
-            const displayMsg = isRegenerating ? { ...msg, content: streamBuffer || msg.content } : msg;
+            // Strip old-swipe attachments during regeneration so a previous
+            // illustration doesn't linger while new text is streaming in.
+            const displayMsg = isRegenerating
+              ? (() => {
+                  const parsed = typeof msg.extra === "string" ? JSON.parse(msg.extra) : (msg.extra ?? {});
+                  return { ...msg, content: streamBuffer || msg.content, extra: { ...parsed, attachments: null } };
+                })()
+              : msg;
             elements.push(
               <ConversationMessage
                 key={item.key}
@@ -899,6 +906,11 @@ function SplitMessageGroup({
         // (or "X is typing…" via the indicator below) rather than repeating dots/content per line.
         const firstItem = items[0]!;
         const isRegen = isStreaming && regenerateMessageId === firstItem.msg.id;
+        // Strip old-swipe attachments during regeneration so a previous
+        // illustration doesn't linger while new text is streaming in.
+        const regenExtra = isRegen
+          ? (() => { const p = typeof firstItem.msg.extra === "string" ? JSON.parse(firstItem.msg.extra) : (firstItem.msg.extra ?? {}); return { ...p, attachments: null }; })()
+          : undefined;
         if (isRegen) {
           // While waiting for content, don't render — the "X is typing..." indicator
           // at the bottom of the message list provides the visual feedback.
@@ -906,7 +918,7 @@ function SplitMessageGroup({
             return (
               <ConversationMessage
                 key={firstItem.key}
-                message={{ ...firstItem.msg, content: "" } as any}
+                message={{ ...firstItem.msg, content: "", extra: regenExtra } as any}
                 isStreaming={false}
                 isGrouped={firstItem.isGrouped}
                 hideActions
@@ -921,7 +933,7 @@ function SplitMessageGroup({
               />
             );
           }
-          const dMsg = { ...firstItem.msg, content: streamBuffer };
+          const dMsg = { ...firstItem.msg, content: streamBuffer, extra: regenExtra };
           return (
             <ConversationMessage
               key={firstItem.key}

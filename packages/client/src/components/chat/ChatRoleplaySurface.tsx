@@ -204,7 +204,11 @@ function RegeneratingMessageContent({
   msg: MessageWithSwipes;
 } & Omit<ComponentProps<typeof ChatMessage>, "message" | "isStreaming">) {
   const streamBuffer = useChatStore((s) => s.streamBuffer);
-  return <ChatMessage message={{ ...msg, content: streamBuffer || "" }} isStreaming {...rest} />;
+  // Strip old-swipe attachments so a previous illustration doesn't linger
+  // while the new swipe's text is streaming in.
+  const parsedExtra = typeof msg.extra === "string" ? JSON.parse(msg.extra) : (msg.extra ?? {});
+  const cleanExtra = { ...parsedExtra, attachments: null };
+  return <ChatMessage message={{ ...msg, extra: cleanExtra, content: streamBuffer || "" }} isStreaming {...rest} />;
 }
 
 function RpToolbarButton({

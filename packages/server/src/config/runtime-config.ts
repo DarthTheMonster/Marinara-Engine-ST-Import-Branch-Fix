@@ -131,6 +131,14 @@ export function getGifApiKey() {
   return normalizeEnvValue(process.env.GIPHY_API_KEY);
 }
 
+export function getAdminSecret() {
+  return normalizeEnvValue(process.env.ADMIN_SECRET);
+}
+
+export function getEncryptionKeyOverride() {
+  return normalizeEnvValue(process.env.ENCRYPTION_KEY);
+}
+
 export function getSpotifyRedirectUri() {
   return `${getServerProtocol()}://127.0.0.1:${getPort()}/api/spotify/callback`;
 }

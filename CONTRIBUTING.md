@@ -106,6 +106,7 @@ Release-related behavior already in the repo:
 - The server update check reads the latest GitHub Release tag and compares it to `APP_VERSION`.
 - Git-based installs can apply updates automatically; Docker installs are prompted with the pull command instead.
 - Pull request CI runs `pnpm check` and `pnpm version:check`.
+- Built installer binaries belong on GitHub Releases and should not be committed back into the repository.
 
 Standard release flow:
 

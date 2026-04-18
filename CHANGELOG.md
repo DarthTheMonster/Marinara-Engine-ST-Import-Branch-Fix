@@ -21,6 +21,7 @@ This file is the release-notes source of truth for Marinara Engine. Reuse these 
 - More filters to sort by in lorebooks, and added an ability to lock entries from being edited by agents.
 - You may now generate images based on the chat anytime by pressing the "Illustrate" button in the Gallery.
 - Spellbooks were added as a separate lorebook category, used in combat.
+- Added an ability to download and use Gemma-4-E2B, a tiny model that can be run even on mobile devices and can handle trackers in roleplays and scene analysis for the game mode.
 - Other minor things I probably forgot about, have fun discovering them on your own.
 
 ### Fixed

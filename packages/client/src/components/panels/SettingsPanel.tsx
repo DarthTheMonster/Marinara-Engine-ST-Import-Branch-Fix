@@ -1864,7 +1864,9 @@ function AdvancedSettings() {
         showSaveFilePicker?: (options: {
           suggestedName?: string;
           types?: Array<{ description?: string; accept: Record<string, string[]> }>;
-        }) => Promise<{ createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }> }>;
+        }) => Promise<{
+          createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }>;
+        }>;
       };
       if (typeof w.showSaveFilePicker === "function") {
         try {

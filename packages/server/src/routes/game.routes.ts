@@ -2122,9 +2122,7 @@ export async function gameRoutes(app: FastifyInstance) {
                 const currentNpcs = (latestMeta.gameNpcs as GameNpc[]) ?? [];
                 let changed = false;
                 for (const resolved of libResolvedNpcs) {
-                  const existing = currentNpcs.find(
-                    (n) => n.name.toLowerCase() === resolved.name.toLowerCase(),
-                  );
+                  const existing = currentNpcs.find((n) => n.name.toLowerCase() === resolved.name.toLowerCase());
                   if (existing && !existing.avatarUrl) {
                     existing.avatarUrl = resolved.avatarUrl;
                     changed = true;

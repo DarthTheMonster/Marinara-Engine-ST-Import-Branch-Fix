@@ -2183,8 +2183,7 @@ export function GameSurface({
   // (4) any in-flight image / NPC portrait generation has completed.
   // Once ALL conditions are met for the first time the screen never returns.
   // sceneProcessed is computed above (near scenePreparing).
-  const firstTurnFullyReady =
-    hasEverHadContent && !isStreaming && sceneProcessed && !pendingAssetGeneration;
+  const firstTurnFullyReady = hasEverHadContent && !isStreaming && sceneProcessed && !pendingAssetGeneration;
   // Don't auto-dismiss: wait for user to click Continue after typewriter finishes.
 
   const awaitingFirstTurn = sessionStatus === "active" && !firstTurnPresentedRef.current;

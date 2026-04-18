@@ -73,10 +73,7 @@ function getTargetRect(target: string): Rect | null {
   return null;
 }
 
-function computeTooltipStyle(
-  rect: Rect,
-  side: "top" | "bottom" | "left" | "right",
-): React.CSSProperties {
+function computeTooltipStyle(rect: Rect, side: "top" | "bottom" | "left" | "right"): React.CSSProperties {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const isMobile = vw < 640;
@@ -270,11 +267,7 @@ export function GameTutorial({ open, onClose }: GameTutorialProps) {
       setTargetRect(null);
     } else if (
       r &&
-      (!prev ||
-        r.top !== prev.top ||
-        r.left !== prev.left ||
-        r.width !== prev.width ||
-        r.height !== prev.height)
+      (!prev || r.top !== prev.top || r.left !== prev.left || r.width !== prev.width || r.height !== prev.height)
     ) {
       lastRectRef.current = r;
       setTargetRect(r);
@@ -325,13 +318,7 @@ export function GameTutorial({ open, onClose }: GameTutorialProps) {
             className="pointer-events-auto rounded-2xl border border-[var(--border)] bg-[var(--popover)] p-4 shadow-2xl ring-1 ring-[var(--primary)]/20 sm:p-5"
             style={computeTooltipStyle(targetRect, stepData.side)}
           >
-            <TutorialCard
-              step={step}
-              stepData={stepData}
-              isLast={isLast}
-              onNext={next}
-              onSkip={onClose}
-            />
+            <TutorialCard step={step} stepData={stepData} isLast={isLast} onNext={next} onSkip={onClose} />
           </motion.div>
         </AnimatePresence>
       ) : (
@@ -348,13 +335,7 @@ export function GameTutorial({ open, onClose }: GameTutorialProps) {
               className="pointer-events-auto rounded-2xl border border-[var(--border)] bg-[var(--popover)] p-4 shadow-2xl ring-1 ring-[var(--primary)]/20 max-h-[90vh] overflow-y-auto sm:p-5"
               style={{ width: Math.min(380, window.innerWidth - 32) }}
             >
-              <TutorialCard
-                step={step}
-                stepData={stepData}
-                isLast={isLast}
-                onNext={next}
-                onSkip={onClose}
-              />
+              <TutorialCard step={step} stepData={stepData} isLast={isLast} onNext={next} onSkip={onClose} />
             </motion.div>
           </AnimatePresence>
         </div>

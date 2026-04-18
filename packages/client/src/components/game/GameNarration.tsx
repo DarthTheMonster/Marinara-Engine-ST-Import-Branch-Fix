@@ -723,7 +723,6 @@ export function GameNarration({
     segments,
     showUserMessages,
     personaInfo,
-    latestUserMessage,
     partyChatInput,
     partyChatMessageId,
     partyDialogue,

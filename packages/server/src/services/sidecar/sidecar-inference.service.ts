@@ -187,15 +187,7 @@ const SCENE_ANALYSIS_SCHEMA = {
     },
   },
   additionalProperties: false as const,
-  required: [
-    "background",
-    "music",
-    "ambient",
-    "weather",
-    "timeOfDay",
-    "reputationChanges",
-    "segmentEffects",
-  ] as const,
+  required: ["background", "music", "ambient", "weather", "timeOfDay", "reputationChanges", "segmentEffects"] as const,
 };
 
 // ── Public Inference API ──

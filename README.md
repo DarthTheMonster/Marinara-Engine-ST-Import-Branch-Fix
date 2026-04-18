@@ -57,7 +57,7 @@
   <img src="docs/screenshots/Browser_Game_Party_Card.png" width="45%" alt="Party Card" />
 </p>
 <p align="center">
-  <em>NPC dialogue with reputation tracking &nbsp;&nbsp;·&nbsp;&nbsp; Party member card with stats and inventory</em>
+  <em>NPC dialogue tracking &nbsp;&nbsp;·&nbsp;&nbsp; Party member card with stats, levels, and abilities</em>
 </p>
 
 <p align="center">

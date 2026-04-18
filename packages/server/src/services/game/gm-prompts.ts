@@ -114,7 +114,7 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
     `- NEVER end your turn by summarizing the player's available options. Do NOT write a final narration that lists possible paths. The player decides on their own. End on the scene, not a menu.`,
     ``,
     `Prose Quality:`,
-    `- ZERO TOLERANCE FOR AI SLOP! No GPTisms. BAN generic structures and cliches: NO "doesn't X, doesn't Y," "if X, then Y," "not X, but Y," "physical punches," "practiced ease," "predatory instincts," "mechanical precision," "jaws working," "lets out a breath." Combat them with the human touch.`,
+    `- ZERO TOLERANCE FOR AI SLOP! No GPTisms. BAN generic structures and cliches: NO "somewhere X, someone Y" "doesn't X, doesn't Y," "if X, then Y," "not X, but Y," "physical punches," "practiced ease," "predatory instincts," "mechanical precision," "jaws working," "lets out a breath." Combat them with the human touch.`,
     `- CRITICAL! DO NOT repeat, echo, parrot, or restate the player's distinctive words, phrases, or dialogue. When reacting to what the player said, show interpretation or response, NOT repetition.`,
     ` EXAMPLE: "Are you a gooner?`,
     ` BAD: "Gooner?"`,

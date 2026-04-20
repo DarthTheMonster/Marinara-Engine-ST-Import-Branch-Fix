@@ -1855,6 +1855,8 @@ export function GameSurface({
   const gameName = chat?.name || "Game";
   const gameId = (chatMeta.gameId as string) || null;
   const sessionSummaries = (chatMeta.gamePreviousSessionSummaries as SessionSummary[]) || [];
+  const displaySessionNumber =
+    sessionStatus === "concluded" ? Math.max(sessionSummaries.length, 1) : sessionSummaries.length + 1;
 
   const handleRollDice = useCallback(
     (notation: string) => {
@@ -1887,13 +1889,14 @@ export function GameSurface({
   }, [handleConcludeSession]);
 
   const handleStartNewSession = useCallback(() => {
-    if (gameId) startSession.mutate({ gameId });
+    if (!gameId || startSession.isPending) return;
+    startSession.mutate({ gameId });
   }, [gameId, startSession]);
 
   const handleCopySessionContext = useCallback(async () => {
     const lines = [
       `gameName=${gameName}`,
-      `session=${sessionNumber}`,
+      `session=${displaySessionNumber}`,
       `state=${gameState}`,
       `chatId=${activeChatId}`,
       `gameId=${gameId ?? ""}`,
@@ -1919,8 +1922,8 @@ export function GameSurface({
     gameSnapshot?.temperature,
     gameSnapshot?.time,
     gameSnapshot?.weather,
+    displaySessionNumber,
     gameState,
-    sessionNumber,
   ]);
 
   const handleDismissDice = useCallback(() => {
@@ -2446,7 +2449,7 @@ export function GameSurface({
                   <button
                     onClick={handleCopySessionContext}
                     className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white/85 backdrop-blur-md transition-colors hover:bg-black/60 hover:text-white"
-                    title={`${gameName} - Session ${sessionNumber}`}
+                    title={`${gameName} - Session ${displaySessionNumber}`}
                   >
                     <Info size={14} />
                   </button>
@@ -2468,7 +2471,8 @@ export function GameSurface({
                   ) : (
                     <button
                       onClick={handleStartNewSession}
-                      className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-300/25 bg-emerald-500/20 text-emerald-200 backdrop-blur-md transition-colors hover:bg-emerald-500/35"
+                      disabled={startSession.isPending}
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-emerald-300/25 bg-emerald-500/20 text-emerald-200 backdrop-blur-md transition-colors hover:bg-emerald-500/35 disabled:opacity-50 disabled:hover:bg-emerald-500/20"
                       title="New Session"
                     >
                       <Play size={13} />
@@ -2563,7 +2567,7 @@ export function GameSurface({
                             setMobileActionsOpen(false);
                           }}
                           className="flex h-8 w-8 items-center justify-center rounded-lg text-white/85 transition-colors hover:bg-white/10 hover:text-white"
-                          title={`${gameName} - Session ${sessionNumber}`}
+                          title={`${gameName} - Session ${displaySessionNumber}`}
                         >
                           <Info size={14} />
                         </button>
@@ -2594,7 +2598,8 @@ export function GameSurface({
                               handleStartNewSession();
                               setMobileActionsOpen(false);
                             }}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-emerald-200 transition-colors hover:bg-emerald-500/20"
+                            disabled={startSession.isPending}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-emerald-200 transition-colors hover:bg-emerald-500/20 disabled:opacity-50 disabled:hover:bg-transparent"
                             title="New Session"
                           >
                             <Play size={13} />
@@ -2913,7 +2918,7 @@ export function GameSurface({
                 {historyOpen && (
                   <GameSessionHistory
                     summaries={sessionSummaries}
-                    currentSessionNumber={sessionNumber}
+                    currentSessionNumber={displaySessionNumber}
                     onClose={() => setHistoryOpen(false)}
                   />
                 )}

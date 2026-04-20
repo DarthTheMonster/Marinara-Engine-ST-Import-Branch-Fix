@@ -3758,11 +3758,19 @@ export async function generateRoutes(app: FastifyInstance) {
 
       // ── Impersonate: inject instruction to respond as the user's character ──
       if (input.impersonate) {
+        const rawImpersonationDirection = input.userMessage?.trim() ?? "";
+        const legacyDirectionMatch = rawImpersonationDirection.match(
+          /^\[Impersonation instruction — write \{\{user\}\}'s next response, steering it toward the following:\s*([\s\S]+?)\]$/,
+        );
+        const impersonationDirection = legacyDirectionMatch
+          ? legacyDirectionMatch[1]!.trim()
+          : rawImpersonationDirection;
         const impersonateInstruction = [
           `<instruction>`,
           `You are now writing as ${personaName}, the user's character.`,
           `Study ${personaName}'s previous messages in the conversation and replicate their voice, mannerisms, speech patterns, and style as closely as possible.`,
           personaDescription ? `Character description: ${personaDescription}` : "",
+          impersonationDirection ? `Additional direction for this reply: ${impersonationDirection}` : "",
           `Write a single in-character response from ${personaName}'s perspective. Do NOT break character or add meta-commentary. Respond exactly as ${personaName} would.`,
           `</instruction>`,
         ]
@@ -4142,6 +4150,13 @@ export async function generateRoutes(app: FastifyInstance) {
                   usage.promptTokens += result.usage.promptTokens;
                   usage.completionTokens += result.usage.completionTokens;
                   usage.totalTokens += result.usage.totalTokens;
+                  if (result.usage.cachedPromptTokens != null) {
+                    usage.cachedPromptTokens = (usage.cachedPromptTokens ?? 0) + result.usage.cachedPromptTokens;
+                  }
+                  if (result.usage.cacheWritePromptTokens != null) {
+                    usage.cacheWritePromptTokens =
+                      (usage.cacheWritePromptTokens ?? 0) + result.usage.cacheWritePromptTokens;
+                  }
                 }
               }
               finishReason = result.finishReason;
@@ -4251,6 +4266,13 @@ export async function generateRoutes(app: FastifyInstance) {
                     usage.promptTokens += finalResult.usage.promptTokens;
                     usage.completionTokens += finalResult.usage.completionTokens;
                     usage.totalTokens += finalResult.usage.totalTokens;
+                    if (finalResult.usage.cachedPromptTokens != null) {
+                      usage.cachedPromptTokens = (usage.cachedPromptTokens ?? 0) + finalResult.usage.cachedPromptTokens;
+                    }
+                    if (finalResult.usage.cacheWritePromptTokens != null) {
+                      usage.cacheWritePromptTokens =
+                        (usage.cacheWritePromptTokens ?? 0) + finalResult.usage.cacheWritePromptTokens;
+                    }
                   }
                 }
                 finishReason = finalResult.finishReason;
@@ -4321,6 +4343,8 @@ export async function generateRoutes(app: FastifyInstance) {
                   tokensPrompt: usage?.promptTokens ?? null,
                   tokensCompletion: usage?.completionTokens ?? null,
                   tokensTotal: usage?.totalTokens ?? null,
+                  tokensCachedPrompt: usage?.cachedPromptTokens ?? null,
+                  tokensCacheWritePrompt: usage?.cacheWritePromptTokens ?? null,
                   durationMs,
                   finishReason: finishReason ?? null,
                 },
@@ -4434,6 +4458,8 @@ export async function generateRoutes(app: FastifyInstance) {
                 verbosity: verbosity ?? null,
                 tokensPrompt: usage?.promptTokens ?? null,
                 tokensCompletion: usage?.completionTokens ?? null,
+                tokensCachedPrompt: usage?.cachedPromptTokens ?? null,
+                tokensCacheWritePrompt: usage?.cacheWritePromptTokens ?? null,
                 durationMs,
                 finishReason: finishReason ?? null,
               },

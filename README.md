@@ -75,7 +75,7 @@
 
 ## Latest Release
 
-Current stable release: **[v1.5.2](https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v1.5.2)**.
+Current stable release: **[v1.5.3](https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v1.5.3)**.
 
 Detailed release notes now live in [CHANGELOG.md](CHANGELOG.md). Tagged releases use the `vX.Y.Z` format, and GitHub Releases remain the publication mechanism for installers, release notes, and update metadata.
 
@@ -99,7 +99,7 @@ Detailed release notes now live in [CHANGELOG.md](CHANGELOG.md). Tagged releases
 
 ### Windows Easiest Method
 
-Download **[Marinara-Engine-Installer-1.5.2.exe](https://github.com/Pasta-Devs/Marinara-Engine/releases/download/v1.5.2/Marinara-Engine-Installer-1.5.2.exe)** from the [Releases](https://github.com/Pasta-Devs/Marinara-Engine/releases) page and run it. The installer lets you choose the install folder, checks for Node.js and Git, aligns pnpm to the repo-pinned version even if an older global pnpm is already installed, clones the repo, installs dependencies, builds the app, and creates desktop and Start Menu shortcuts with the Marinara icon.
+Download **[Marinara-Engine-Installer-1.5.3.exe](https://github.com/Pasta-Devs/Marinara-Engine/releases/download/v1.5.3/Marinara-Engine-Installer-1.5.3.exe)** from the [Releases](https://github.com/Pasta-Devs/Marinara-Engine/releases) page and run it. The installer lets you choose the install folder, checks for Node.js and Git, aligns pnpm to the repo-pinned version even if an older global pnpm is already installed, clones the repo, installs dependencies, builds the app, and creates desktop and Start Menu shortcuts with the Marinara icon.
 
 ### Run from Source (All Platforms)
 
@@ -178,6 +178,8 @@ When started from a git checkout, the shell launchers will:
 
 Set `AUTO_OPEN_BROWSER=false` in `.env` to skip the automatic browser launch. This applies to the shell launchers (`start.bat`, `start.sh`, and `start-termux.sh`) only. The Android wrapper uses its own WebView.
 
+Set `AUTO_CREATE_DEFAULT_CONNECTION=false` in `.env` to prevent Marinara from creating the built-in OpenRouter Free starter connection on startup. By default, it is only created when the database has no saved connections.
+
 #### Manual Setup
 
 ```bash
@@ -208,6 +210,8 @@ Data (SQLite database, uploads, fonts, default backgrounds) is stored in the nam
 ```bash
 docker volume inspect marinara-data
 ```
+
+If you do not want the built-in OpenRouter Free starter connection to be created for new container data volumes, set `AUTO_CREATE_DEFAULT_CONNECTION=false` in your `.env` before running `docker compose up -d`.
 
 To pull the latest image and restart:
 
@@ -419,6 +423,7 @@ Copy `.env.example` to `.env` to customize:
 | `PORT`              | `7860`                                                   | Server port. Keep Android builds, launchers, Docker, and Termux on the same value.                                                                      |
 | `HOST`              | `127.0.0.1` (`pnpm start`) / `0.0.0.0` (shell launchers) | Bind address                                                                                                                                            |
 | `AUTO_OPEN_BROWSER` | `true`                                                   | Whether the shell launchers auto-open the local app URL. Set to `false`, `0`, `no`, or `off` to disable. Does not apply to the Android WebView wrapper. |
+| `AUTO_CREATE_DEFAULT_CONNECTION` | `true`                                    | Whether Marinara auto-creates the built-in OpenRouter Free starter connection when no saved connections exist. Set to `false`, `0`, `no`, or `off` to disable. |
 | `DATABASE_URL`      | `file:./data/marinara-engine.db`                         | SQLite database path. Relative file paths resolve from `packages/server` for compatibility with existing local installs.                                |
 | `ENCRYPTION_KEY`    | _(empty)_                                                | AES key for API key encryption (generate with `openssl rand -hex 32`)                                                                                   |
 | `ADMIN_SECRET`      | _(empty)_                                                | Optional shared secret for destructive admin endpoints such as `/api/admin/clear-all`                                                                   |

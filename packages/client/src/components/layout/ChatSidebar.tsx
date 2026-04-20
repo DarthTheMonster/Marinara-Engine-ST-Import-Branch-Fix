@@ -33,6 +33,7 @@ import {
 } from "../../hooks/use-chat-folders";
 import { useCharacters } from "../../hooks/use-characters";
 import { useChatStore } from "../../stores/chat.store";
+import { showConfirmDialog } from "../../lib/app-dialogs";
 import { useUIStore, type UserStatus } from "../../stores/ui.store";
 import { cn } from "../../lib/utils";
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
@@ -359,8 +360,15 @@ export function ChatSidebar() {
   );
 
   const handleDeleteFolder = useCallback(
-    (id: string) => {
-      if (confirm("Delete this folder? Chats will be moved to the top level.")) {
+    async (id: string) => {
+      if (
+        await showConfirmDialog({
+          title: "Delete Folder",
+          message: "Delete this folder? Chats will be moved to the top level.",
+          confirmLabel: "Delete",
+          tone: "destructive",
+        })
+      ) {
         deleteFolderMut.mutate(id);
       }
     },
@@ -386,9 +394,18 @@ export function ChatSidebar() {
   // ── Batch actions ──
   const [batchMovingFolder, setBatchMovingFolder] = useState(false);
 
-  const handleBatchDelete = useCallback(() => {
+  const handleBatchDelete = useCallback(async () => {
     if (selectedChatIds.size === 0) return;
-    if (!confirm(`Delete ${selectedChatIds.size} chat${selectedChatIds.size > 1 ? "s" : ""}?`)) return;
+    if (
+      !(await showConfirmDialog({
+        title: "Delete Chats",
+        message: `Delete ${selectedChatIds.size} chat${selectedChatIds.size > 1 ? "s" : ""}?`,
+        confirmLabel: "Delete",
+        tone: "destructive",
+      }))
+    ) {
+      return;
+    }
     for (const id of selectedChatIds) {
       deleteChat.mutate(id);
     }
@@ -418,14 +435,23 @@ export function ChatSidebar() {
         tabIndex={0}
         key={chat.groupId ?? chat.id}
         data-chat-id={chat.id}
-        onClick={() => {
+        onClick={async () => {
           if (multiSelectMode) {
             toggleSelectChat(chat.id);
             return;
           }
           if (hasAnyDetailOpen()) {
             if (editorDirty) {
-              if (!window.confirm("You have unsaved changes. Discard and continue?")) return;
+              if (
+                !(await showConfirmDialog({
+                  title: "Unsaved Changes",
+                  message: "You have unsaved changes. Discard and continue?",
+                  confirmLabel: "Discard",
+                  tone: "destructive",
+                }))
+              ) {
+                return;
+              }
             }
             closeAllDetails();
           }
@@ -607,12 +633,19 @@ export function ChatSidebar() {
         {/* Delete button */}
         {!multiSelectMode && (
           <button
-            onClick={(e) => {
+            onClick={async (e) => {
               e.stopPropagation();
               if (branchCount > 1 && chat.groupId) {
                 setDeleteTarget({ chatId: chat.id, groupId: chat.groupId, branchCount });
               } else {
-                if (confirm("Delete this chat?")) {
+                if (
+                  await showConfirmDialog({
+                    title: "Delete Chat",
+                    message: "Delete this chat?",
+                    confirmLabel: "Delete",
+                    tone: "destructive",
+                  })
+                ) {
                   deleteChat.mutate(chat.id);
                   if (activeChatId === chat.id) setActiveChatId(null);
                 }

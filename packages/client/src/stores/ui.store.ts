@@ -106,7 +106,7 @@ interface UIState {
   confirmBeforeDelete: boolean;
   /** Number of messages to load per page (0 = load all) */
   messagesPerPage: number;
-  /** Bold and color text inside quotation marks in chat messages */
+  /** Bold quoted dialogue in chat messages; color highlighting can still remain when this is off */
   boldDialogue: boolean;
 
   // ── Text Appearance ──

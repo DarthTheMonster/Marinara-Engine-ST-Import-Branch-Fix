@@ -45,6 +45,7 @@ import {
   Download,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { showAlertDialog, showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
 import { HelpTooltip } from "../ui/HelpTooltip";
 import { ExpandedTextarea } from "../ui/ExpandedTextarea";
 import { ChoiceSelectionModal } from "../presets/ChoiceSelectionModal";
@@ -492,9 +493,14 @@ export function ChatSettingsDrawer({
     setRenamingPreset(false);
   };
 
-  const handleSaveAsPreset = () => {
+  const handleSaveAsPreset = async () => {
     if (!selectedChatPreset) return;
-    const baseName = window.prompt("Name for the new preset:", `${selectedChatPreset.name} Copy`);
+    const baseName = await showPromptDialog({
+      title: "Duplicate Preset",
+      message: "Name for the new preset:",
+      defaultValue: `${selectedChatPreset.name} Copy`,
+      confirmLabel: "Create",
+    });
     if (!baseName?.trim()) return;
     const trimmed = baseName.trim().slice(0, 120);
     duplicateChatPreset.mutate(
@@ -515,9 +521,14 @@ export function ChatSettingsDrawer({
     );
   };
 
-  const handleDeletePreset = () => {
+  const handleDeletePreset = async () => {
     if (!selectedChatPreset || selectedChatPreset.isDefault) return;
-    const ok = window.confirm(`Delete preset "${selectedChatPreset.name}"? This cannot be undone.`);
+    const ok = await showConfirmDialog({
+      title: "Delete Preset",
+      message: `Delete preset "${selectedChatPreset.name}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      tone: "destructive",
+    });
     if (!ok) return;
     const wasApplied = selectedChatPreset.id === appliedPresetId;
     const defaultPreset = presetList.find((p) => p.isDefault);
@@ -555,7 +566,11 @@ export function ChatSettingsDrawer({
       const created = await importChatPreset.mutateAsync(envelope);
       if (created?.id) applyChatPreset.mutate({ presetId: created.id, chatId: chat.id });
     } catch (err) {
-      window.alert(`Failed to import preset: ${err instanceof Error ? err.message : "Invalid file"}`);
+      await showAlertDialog({
+        title: "Import Failed",
+        message: `Failed to import preset: ${err instanceof Error ? err.message : "Invalid file"}`,
+        tone: "destructive",
+      });
     }
   };
 

@@ -18,6 +18,7 @@ import {
   useChat,
   useDeleteMessage,
   useDeleteMessages,
+  useDeleteSwipe,
   useUpdateMessage,
   useUpdateMessageExtra,
   usePeekPrompt,
@@ -33,6 +34,7 @@ import { useGenerate } from "../../hooks/use-generate";
 import { useCharacters, usePersonas } from "../../hooks/use-characters";
 import { useConnections } from "../../hooks/use-connections";
 import { api } from "../../lib/api-client";
+import { showConfirmDialog } from "../../lib/app-dialogs";
 import { useGameStateStore } from "../../stores/game-state.store";
 import { BookOpen, HelpCircle, MessageSquare, Theater } from "lucide-react";
 import type { SpritePlacement, SpriteSide } from "@marinara-engine/shared";
@@ -138,6 +140,7 @@ export function ChatArea() {
   const { data: connections } = useConnections();
   const deleteMessage = useDeleteMessage(activeChatId);
   const deleteMessages = useDeleteMessages(activeChatId);
+  const deleteSwipe = useDeleteSwipe(activeChatId);
   const updateMessage = useUpdateMessage(activeChatId);
   const updateMessageExtra = useUpdateMessageExtra(activeChatId);
   const peekPrompt = usePeekPrompt();
@@ -471,12 +474,27 @@ export function ChatArea() {
     setDeleteDialogMessageId(messageId);
   }, []);
 
+  const deleteDialogMessage = useMemo(
+    () => messages?.find((message) => message.id === deleteDialogMessageId) ?? null,
+    [deleteDialogMessageId, messages],
+  );
+  const deleteDialogCanDeleteSwipe = (deleteDialogMessage?.swipeCount ?? 0) > 1;
+  const deleteDialogActiveSwipeIndex = deleteDialogMessage?.activeSwipeIndex ?? 0;
+  const deleteDialogSwipeCount = deleteDialogMessage?.swipeCount ?? 0;
+
   const handleDeleteConfirm = useCallback(() => {
     if (deleteDialogMessageId) {
       deleteMessage.mutate(deleteDialogMessageId);
     }
     setDeleteDialogMessageId(null);
   }, [deleteDialogMessageId, deleteMessage]);
+
+  const handleDeleteSwipe = useCallback(() => {
+    if (deleteDialogMessageId && deleteDialogCanDeleteSwipe) {
+      deleteSwipe.mutate({ messageId: deleteDialogMessageId, index: deleteDialogActiveSwipeIndex });
+    }
+    setDeleteDialogMessageId(null);
+  }, [deleteDialogActiveSwipeIndex, deleteDialogCanDeleteSwipe, deleteDialogMessageId, deleteSwipe]);
 
   const handleDeleteMore = useCallback(() => {
     if (deleteDialogMessageId) {
@@ -585,7 +603,16 @@ export function ChatArea() {
     async (messageId: string) => {
       if (!activeChatId || isStreaming) return;
       // On touch devices, confirm to prevent accidental taps
-      if (matchMedia("(pointer: coarse)").matches && !confirm("Regenerate this message?")) return;
+      if (
+        matchMedia("(pointer: coarse)").matches &&
+        !(await showConfirmDialog({
+          title: "Regenerate Message",
+          message: "Regenerate this message as a new swipe?",
+          confirmLabel: "Regenerate",
+        }))
+      ) {
+        return;
+      }
       try {
         // Regenerate as a new swipe on the existing message
         await generate({ chatId: activeChatId, connectionId: null, regenerateMessageId: messageId });
@@ -1038,6 +1065,9 @@ export function ChatArea() {
             wizardOpen={wizardOpen}
             peekPromptData={peekPromptData}
             deleteDialogMessageId={deleteDialogMessageId}
+            deleteDialogCanDeleteSwipe={deleteDialogCanDeleteSwipe}
+            deleteDialogActiveSwipeIndex={deleteDialogActiveSwipeIndex}
+            deleteDialogSwipeCount={deleteDialogSwipeCount}
             multiSelectMode={multiSelectMode}
             selectedMessageCount={selectedMessageIds.size}
             sceneSettings={{
@@ -1056,6 +1086,7 @@ export function ChatArea() {
             }}
             onClosePeekPrompt={() => setPeekPromptData(null)}
             onDeleteConfirm={handleDeleteConfirm}
+            onDeleteSwipe={handleDeleteSwipe}
             onDeleteMore={handleDeleteMore}
             onCloseDeleteDialog={() => setDeleteDialogMessageId(null)}
             onBulkDelete={handleBulkDelete}
@@ -1099,12 +1130,16 @@ export function ChatArea() {
             wizardOpen={wizardOpen}
             peekPromptData={peekPromptData}
             deleteDialogMessageId={deleteDialogMessageId}
+            deleteDialogCanDeleteSwipe={deleteDialogCanDeleteSwipe}
+            deleteDialogActiveSwipeIndex={deleteDialogActiveSwipeIndex}
+            deleteDialogSwipeCount={deleteDialogSwipeCount}
             multiSelectMode={multiSelectMode}
             selectedMessageIds={selectedMessageIds}
             spriteArrangeMode={spriteArrangeMode}
             onDelete={handleDelete}
             onRegenerate={handleRegenerate}
             onEdit={handleEdit}
+            onSetActiveSwipe={handleSetActiveSwipe}
             onPeekPrompt={handlePeekPrompt}
             onToggleSelectMessage={handleToggleSelectMessage}
             onSwitchChat={chat?.connectedChatId ? () => setActiveChatId(chat.connectedChatId!) : undefined}
@@ -1125,6 +1160,7 @@ export function ChatArea() {
             onSpriteSideChange={handleSetSpritePosition}
             onToggleSpriteArrange={() => setSpriteArrangeMode((prev) => !prev)}
             onDeleteConfirm={handleDeleteConfirm}
+            onDeleteSwipe={handleDeleteSwipe}
             onDeleteMore={handleDeleteMore}
             onCloseDeleteDialog={() => setDeleteDialogMessageId(null)}
             onBulkDelete={handleBulkDelete}
@@ -1195,6 +1231,9 @@ export function ChatArea() {
           wizardOpen={wizardOpen}
           peekPromptData={peekPromptData}
           deleteDialogMessageId={deleteDialogMessageId}
+          deleteDialogCanDeleteSwipe={deleteDialogCanDeleteSwipe}
+          deleteDialogActiveSwipeIndex={deleteDialogActiveSwipeIndex}
+          deleteDialogSwipeCount={deleteDialogSwipeCount}
           multiSelectMode={multiSelectMode}
           selectedMessageIds={selectedMessageIds}
           groupChatMode={groupChatMode}
@@ -1233,6 +1272,7 @@ export function ChatArea() {
           onExpressionChange={handleExpressionChange}
           onSpritePlacementChange={handleSpritePlacementChange}
           onDeleteConfirm={handleDeleteConfirm}
+          onDeleteSwipe={handleDeleteSwipe}
           onDeleteMore={handleDeleteMore}
           onCloseDeleteDialog={() => setDeleteDialogMessageId(null)}
           onBulkDelete={handleBulkDelete}

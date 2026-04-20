@@ -362,7 +362,7 @@ function GeneralSettings() {
         checked={boldDialogue ?? true}
         onChange={setBoldDialogue}
         help={
-          'When on, text inside quotation marks ("like this") is bolded and colored in chat messages. Turn off for plain text rendering.'
+          'When on, text inside quotation marks ("like this") is bolded in addition to its dialogue highlight color. Turn it off to keep the color without bold.'
         }
       />
 

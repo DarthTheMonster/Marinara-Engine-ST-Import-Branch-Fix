@@ -726,6 +726,8 @@ export function useGenerate() {
                 tokensPrompt: number | null;
                 tokensCompletion: number | null;
                 tokensTotal: number | null;
+                tokensCachedPrompt: number | null;
+                tokensCacheWritePrompt: number | null;
                 durationMs: number | null;
                 finishReason: string | null;
               };
@@ -733,6 +735,12 @@ export function useGenerate() {
               if (usage.tokensPrompt != null) parts.push(`prompt: ${usage.tokensPrompt.toLocaleString()}`);
               if (usage.tokensCompletion != null) parts.push(`completion: ${usage.tokensCompletion.toLocaleString()}`);
               if (usage.tokensTotal != null) parts.push(`total: ${usage.tokensTotal.toLocaleString()}`);
+              if ((usage.tokensCachedPrompt ?? 0) > 0) {
+                parts.push(`cached: ${usage.tokensCachedPrompt!.toLocaleString()}`);
+              }
+              if ((usage.tokensCacheWritePrompt ?? 0) > 0) {
+                parts.push(`cache write: ${usage.tokensCacheWritePrompt!.toLocaleString()}`);
+              }
               if (usage.durationMs != null) parts.push(`${(usage.durationMs / 1000).toFixed(1)}s`);
               if (usage.finishReason) parts.push(`finish: ${usage.finishReason}`);
               const tokenInfo = parts.length > 0 ? parts.join(" · ") : "no usage data";

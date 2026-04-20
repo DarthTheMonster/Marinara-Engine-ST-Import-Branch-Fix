@@ -1,5 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
+cd /d "%~dp0\.."
 title Marinara Engine - Installer
 color 0A
 
@@ -10,7 +11,7 @@ set "INSTALL_ERROR="
 echo.
 echo  +==========================================+
 echo  ^|   Marinara Engine - Windows Installer     ^|
-echo  ^|   v1.5.1                                  ^|
+echo  ^|   v1.5.2                                  ^|
 
 echo  +==========================================+
 echo.
@@ -65,6 +66,11 @@ echo  [OK] Node.js installed successfully
 echo  [OK] Node.js found:
 node -v
 
+set "PNPM_VERSION=10.30.3"
+for /f "usebackq delims=" %%i in (`node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).packageManager?.split('@')[1] || '10.30.3'"`) do set "PNPM_VERSION=%%i"
+set "PNPM_RUNNER=pnpm"
+set "CURRENT_PNPM_VERSION="
+
 :: -- Git --
 where git >nul 2>&1
 if errorlevel 1 goto :install_git
@@ -96,22 +102,45 @@ echo  [OK] Git installed successfully
 :git_ok
 echo  [OK] Git found
 
-:: -- Install pnpm if needed --
-set "PNPM_VERSION=10.30.3"
-where pnpm >nul 2>&1
-if errorlevel 1 goto :install_pnpm
-goto :pnpm_ok
+:: -- Resolve pinned pnpm without changing global state --
+where corepack >nul 2>&1
+if not errorlevel 1 (
+    echo  [..] Aligning pnpm to %PNPM_VERSION% via Corepack...
+    for /f "usebackq delims=" %%i in (`corepack pnpm@%PNPM_VERSION% --version 2^>nul`) do set "CURRENT_PNPM_VERSION=%%i"
+    if /I "!CURRENT_PNPM_VERSION!"=="%PNPM_VERSION%" (
+        set "PNPM_RUNNER=corepack"
+    ) else (
+        set "CURRENT_PNPM_VERSION="
+    )
+)
 
-:install_pnpm
-echo  [..] Installing pnpm %PNPM_VERSION%...
-call npm install -g pnpm@%PNPM_VERSION%
-if errorlevel 1 (
-    set "INSTALL_ERROR=Failed to install pnpm. Please run: npm install -g pnpm@%PNPM_VERSION%"
+if not defined CURRENT_PNPM_VERSION (
+    where pnpm >nul 2>&1
+    if not errorlevel 1 (
+        for /f "usebackq delims=" %%i in (`pnpm --version 2^>nul`) do set "CURRENT_PNPM_VERSION=%%i"
+        if /I not "!CURRENT_PNPM_VERSION!"=="%PNPM_VERSION%" (
+            set "CURRENT_PNPM_VERSION="
+        )
+    )
+)
+
+if not defined CURRENT_PNPM_VERSION (
+    echo  [..] Using temporary pnpm %PNPM_VERSION% via npx...
+    for /f "usebackq delims=" %%i in (`npx --yes pnpm@%PNPM_VERSION% --version 2^>nul`) do set "CURRENT_PNPM_VERSION=%%i"
+    if /I "!CURRENT_PNPM_VERSION!"=="%PNPM_VERSION%" (
+        set "PNPM_RUNNER=npx"
+    ) else (
+        set "CURRENT_PNPM_VERSION="
+    )
+)
+
+if not defined CURRENT_PNPM_VERSION (
+    set "INSTALL_ERROR=Failed to start pnpm %PNPM_VERSION% via Corepack or npx."
     goto :fatal
 )
 
 :pnpm_ok
-echo  [OK] pnpm found
+echo  [OK] pnpm !CURRENT_PNPM_VERSION! ready
 
 :: -- Clone repository --
 echo.
@@ -135,7 +164,7 @@ git pull
 :: -- Install dependencies --
 echo.
 echo  [..] Installing dependencies (this may take a few minutes)...
-call pnpm install
+call :run_pnpm install
 if %errorlevel% neq 0 (
     set "INSTALL_ERROR=Failed to install dependencies."
     goto :fatal
@@ -145,7 +174,7 @@ echo  [OK] Dependencies installed
 :: -- Build --
 echo.
 echo  [..] Building Marinara Engine...
-call pnpm build
+call :run_pnpm build
 if %errorlevel% neq 0 (
     set "INSTALL_ERROR=Build failed."
     goto :fatal
@@ -154,7 +183,7 @@ echo  [OK] Build complete
 
 :: -- Sync database --
 echo  [..] Setting up database...
-call pnpm db:push 2>nul
+call :run_pnpm db:push 2>nul
 echo  [OK] Database ready
 
 :: -- Create desktop shortcut --
@@ -168,6 +197,7 @@ set "VBS=%TEMP%\create_shortcut.vbs"
     echo Set oLink = oWS.CreateShortcut^(sLinkFile^)
     echo oLink.TargetPath = "%INSTALL_DIR%\start.bat"
     echo oLink.WorkingDirectory = "%INSTALL_DIR%"
+    echo oLink.IconLocation = "%INSTALL_DIR%\installer\app-icon.ico,0"
     echo oLink.Description = "Marinara Engine - AI Chat ^& Roleplay"
     echo oLink.Save
 ) > "%VBS%"
@@ -191,6 +221,18 @@ echo  ==========================================
 echo.
 pause
 goto :eof
+
+:run_pnpm
+if /I "%PNPM_RUNNER%"=="corepack" (
+    call corepack pnpm@%PNPM_VERSION% %*
+) else (
+    if /I "%PNPM_RUNNER%"=="npx" (
+        call npx --yes pnpm@%PNPM_VERSION% %*
+    ) else (
+        call pnpm %*
+    )
+)
+exit /b %errorlevel%
 
 :: -- Fatal error handler: always visible, never silent --
 :fatal

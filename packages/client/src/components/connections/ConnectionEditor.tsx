@@ -37,7 +37,13 @@ import {
 import { cn } from "../../lib/utils";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { HelpTooltip } from "../ui/HelpTooltip";
-import { PROVIDERS, MODEL_LISTS, IMAGE_GENERATION_SOURCES, type APIProvider } from "@marinara-engine/shared";
+import {
+  PROVIDERS,
+  MODEL_LISTS,
+  IMAGE_GENERATION_SOURCES,
+  inferImageSource,
+  type APIProvider,
+} from "@marinara-engine/shared";
 
 /** Links where users can obtain API keys for each provider */
 const API_KEY_LINKS: Partial<Record<APIProvider, { label: string; url: string }>> = {
@@ -47,6 +53,7 @@ const API_KEY_LINKS: Partial<Record<APIProvider, { label: string; url: string }>
   mistral: { label: "Get your Mistral API key", url: "https://console.mistral.ai/api-keys" },
   cohere: { label: "Get your Cohere API key", url: "https://dashboard.cohere.com/api-keys" },
   openrouter: { label: "Get your OpenRouter API key", url: "https://openrouter.ai/keys" },
+  nanogpt: { label: "Get your NanoGPT API key", url: "https://nano-gpt.com/api" },
 };
 
 // ═══════════════════════════════════════════════
@@ -87,7 +94,9 @@ export function ConnectionEditor() {
   const [localEmbeddingBaseUrl, setLocalEmbeddingBaseUrl] = useState("");
   const [localEmbeddingConnectionId, setLocalEmbeddingConnectionId] = useState("");
   const [localOpenrouterProvider, setLocalOpenrouterProvider] = useState("");
+  const [localImageGenerationSource, setLocalImageGenerationSource] = useState("");
   const [localComfyuiWorkflow, setLocalComfyuiWorkflow] = useState("");
+  const [localImageService, setLocalImageService] = useState<string | null>(null);
 
   // Test results
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latencyMs: number } | null>(null);
@@ -102,6 +111,7 @@ export function ConnectionEditor() {
   const [modelSearch, setModelSearch] = useState("");
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const modelTriggerRef = useRef<HTMLDivElement>(null);
+  const modelSearchInputRef = useRef<HTMLInputElement>(null);
   const [dropdownRect, setDropdownRect] = useState<{ top: number; left: number; width: number; maxH: number } | null>(
     null,
   );
@@ -162,12 +172,30 @@ export function ConnectionEditor() {
     setLocalEmbeddingBaseUrl((c.embeddingBaseUrl as string) ?? "");
     setLocalEmbeddingConnectionId((c.embeddingConnectionId as string) ?? "");
     setLocalOpenrouterProvider((c.openrouterProvider as string) ?? "");
+    setLocalImageGenerationSource(
+      (c.provider as APIProvider) === "image_generation"
+        ? ((c.imageGenerationSource as string) ??
+            (c.imageService as string) ??
+            inferImageSource((c.model as string) ?? "", (c.baseUrl as string) ?? ""))
+        : "",
+    );
     setLocalComfyuiWorkflow((c.comfyuiWorkflow as string) ?? "");
+    setLocalImageService(((c.imageService as string | null) ?? (c.imageGenerationSource as string | null)) || null);
     setDirty(false);
     setSaveError(null);
     setTestResult(null);
     setMsgResult(null);
   }, [conn]);
+
+  const effectiveImageGenerationSource = useMemo(() => {
+    if (localProvider !== "image_generation") return "";
+    return localImageGenerationSource || localImageService || inferImageSource(localModel, localBaseUrl);
+  }, [localProvider, localImageGenerationSource, localImageService, localModel, localBaseUrl]);
+
+  const selectedImageService =
+    localProvider === "image_generation"
+      ? localImageGenerationSource || localImageService || effectiveImageGenerationSource
+      : "";
 
   // Model list for current provider
   const providerModels = useMemo(() => {
@@ -224,7 +252,11 @@ export function ConnectionEditor() {
       embeddingBaseUrl: localEmbeddingBaseUrl,
       embeddingConnectionId: localEmbeddingConnectionId || null,
       openrouterProvider: localOpenrouterProvider || null,
+      imageGenerationSource:
+        localProvider === "image_generation" ? localImageGenerationSource || localImageService || null : null,
       comfyuiWorkflow: localComfyuiWorkflow || null,
+      imageService:
+        localProvider === "image_generation" ? localImageGenerationSource || localImageService || null : null,
     };
     // Only send API key if user typed a new one
     if (localApiKey.trim()) {
@@ -252,7 +284,9 @@ export function ConnectionEditor() {
     localEmbeddingBaseUrl,
     localEmbeddingConnectionId,
     localOpenrouterProvider,
+    localImageGenerationSource,
     localComfyuiWorkflow,
+    localImageService,
     updateConnection,
   ]);
 
@@ -318,6 +352,11 @@ export function ConnectionEditor() {
       onSuccess: (data) => {
         const result = data as { models: Array<{ id: string; name: string }> };
         setRemoteModels(result.models);
+        setShowModelDropdown(true);
+        requestAnimationFrame(() => {
+          modelSearchInputRef.current?.focus();
+          modelSearchInputRef.current?.select();
+        });
       },
       onError: (err) => {
         setFetchError(err instanceof Error ? err.message : "Failed to fetch models");
@@ -336,6 +375,7 @@ export function ConnectionEditor() {
   const markDirty = useCallback(() => setDirty(true), []);
 
   const providerDef = PROVIDERS[localProvider];
+  const isImageGenerationProvider = localProvider === "image_generation";
 
   if (!connectionDetailId) return null;
 
@@ -618,45 +658,60 @@ export function ConnectionEditor() {
             )}
           </FieldGroup>
 
+          {/* ── Image Service (only for image_generation provider) ── */}
+          {localProvider === "image_generation" && (
+            <FieldGroup
+              label="Service"
+              icon={<Globe size="0.875rem" className="text-sky-400" />}
+              help="Pick the backend type once, then point Base URL to any host or port. Provider-specific features such as ComfyUI workflow JSON and checkpoint fetching use this selection."
+            >
+              <div className="grid grid-cols-2 gap-1.5">
+                {IMAGE_GENERATION_SOURCES.map((src) => {
+                  const isActive = selectedImageService === src.id;
+                  return (
+                    <button
+                      key={src.id}
+                      onClick={() => {
+                        const previousSource = IMAGE_GENERATION_SOURCES.find(
+                          (candidate) => candidate.id === selectedImageService,
+                        );
+                        const shouldSeedBaseUrl = !localBaseUrl || localBaseUrl === previousSource?.defaultBaseUrl;
+                        setLocalImageGenerationSource(src.id);
+                        setLocalImageService(src.id);
+                        if (shouldSeedBaseUrl) {
+                          setLocalBaseUrl(src.defaultBaseUrl);
+                        }
+                        markDirty();
+                      }}
+                      className={cn(
+                        "flex flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left text-[0.6875rem] transition-all",
+                        isActive
+                          ? "bg-sky-400/15 text-sky-400 ring-1 ring-sky-400/30"
+                          : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium">{src.name}</span>
+                        {isActive && <Check size="0.625rem" />}
+                      </div>
+                      <span className="text-[0.5625rem] opacity-70">{src.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                Pick the backend type once, then point Base URL to any host or port. Provider-specific features like
+                ComfyUI workflow JSON and checkpoint fetching use this selection, not the default localhost URL.
+              </p>
+            </FieldGroup>
+          )}
+
           {/* ── Model Selection ── */}
           <FieldGroup
             label="Model"
             icon={<Server size="0.875rem" className="text-sky-400" />}
             help="The specific AI model to use. You can pick from the list or type a custom model ID directly."
           >
-            {/* Image generation: show service quick-pick as base URL helper */}
-            {localProvider === "image_generation" && (
-              <div className="mb-3 space-y-1.5">
-                <p className="text-[0.625rem] font-medium text-[var(--muted-foreground)] uppercase tracking-wide">
-                  Service (sets Base URL)
-                </p>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {IMAGE_GENERATION_SOURCES.map((src) => {
-                    const isActive = localBaseUrl === src.defaultBaseUrl;
-                    return (
-                      <button
-                        key={src.id}
-                        onClick={() => {
-                          setLocalBaseUrl(src.defaultBaseUrl);
-                          markDirty();
-                        }}
-                        className={cn(
-                          "flex flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left text-[0.6875rem] transition-all",
-                          isActive
-                            ? "bg-sky-400/15 text-sky-400 ring-1 ring-sky-400/30"
-                            : "bg-[var(--secondary)] text-[var(--muted-foreground)] ring-1 ring-[var(--border)] hover:bg-[var(--accent)] hover:text-[var(--foreground)]",
-                        )}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium">{src.name}</span>
-                          {isActive && <Check size="0.625rem" />}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
             {/* Standard model dropdown + manual input (used for all providers including image_generation) */}
             <div ref={modelTriggerRef} className="relative">
               <div
@@ -669,6 +724,7 @@ export function ConnectionEditor() {
                 <Search size="0.8125rem" className="shrink-0 text-[var(--muted-foreground)]" />
                 {showModelDropdown ? (
                   <input
+                    ref={modelSearchInputRef}
                     value={modelSearch}
                     onChange={(e) => setModelSearch(e.target.value)}
                     className="flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
@@ -893,28 +949,27 @@ export function ConnectionEditor() {
           </FieldGroup>
 
           {/* ── ComfyUI Workflow ── */}
-          {localProvider === "image_generation" &&
-            (localBaseUrl.includes(":8188") || localBaseUrl.toLowerCase().includes("comfyui")) && (
-              <FieldGroup
-                label="ComfyUI Workflow (Optional)"
-                icon={<Zap size="0.875rem" className="text-sky-400" />}
-                help="Paste a custom ComfyUI workflow JSON (API format). Use placeholders: %prompt%, %negative_prompt%, %width%, %height%, %seed%, %model%. Leave empty to use the built-in default txt2img workflow."
-              >
-                <textarea
-                  value={localComfyuiWorkflow}
-                  onChange={(e) => {
-                    setLocalComfyuiWorkflow(e.target.value);
-                    markDirty();
-                  }}
-                  placeholder='Paste workflow JSON here (exported from ComfyUI via "Save (API Format)")…'
-                  className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-xs font-mono outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-sky-400/50 min-h-[120px] max-h-[300px] resize-y"
-                />
-                <p className="text-[0.55rem] text-[var(--muted-foreground)] mt-1">
-                  Export your workflow from ComfyUI using <strong>Save (API Format)</strong> in the menu. Placeholders
-                  like <code>%prompt%</code> will be replaced at generation time.
-                </p>
-              </FieldGroup>
-            )}
+          {localProvider === "image_generation" && selectedImageService === "comfyui" && (
+            <FieldGroup
+              label="ComfyUI Workflow (Optional)"
+              icon={<Zap size="0.875rem" className="text-sky-400" />}
+              help="Paste a custom ComfyUI workflow JSON (API format). Use placeholders: %prompt%, %negative_prompt%, %width%, %height%, %seed%, %model%. Leave empty to use the built-in default txt2img workflow."
+            >
+              <textarea
+                value={localComfyuiWorkflow}
+                onChange={(e) => {
+                  setLocalComfyuiWorkflow(e.target.value);
+                  markDirty();
+                }}
+                placeholder='Paste workflow JSON here (exported from ComfyUI via "Save (API Format)")…'
+                className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-xs font-mono outline-none ring-1 ring-[var(--border)] transition-shadow placeholder:text-[var(--muted-foreground)]/50 focus:ring-sky-400/50 min-h-[120px] max-h-[300px] resize-y"
+              />
+              <p className="text-[0.55rem] text-[var(--muted-foreground)] mt-1">
+                Export your workflow from ComfyUI using <strong>Save (API Format)</strong> in the menu. Placeholders
+                like <code>%prompt%</code> will be replaced at generation time.
+              </p>
+            </FieldGroup>
+          )}
 
           {/* ── Max Context ── */}
           {localProvider !== "image_generation" && (
@@ -973,30 +1028,41 @@ export function ConnectionEditor() {
           )}
 
           {/* ── Default for Agents ── */}
-          {localProvider !== "image_generation" && (
-            <FieldGroup
-              label="Default for Agents"
-              icon={<Bot size="0.875rem" className="text-teal-400" />}
-              help="When enabled, all agents that don't have a specific connection override will use this connection instead of the chat's active connection."
-            >
-              <label className="flex items-center gap-3 cursor-pointer select-none px-2 py-1">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    checked={localDefaultForAgents}
-                    onChange={(e) => {
-                      setLocalDefaultForAgents(e.target.checked);
-                      markDirty();
-                    }}
-                    className="peer sr-only"
-                  />
-                  <div className="h-5 w-9 rounded-full bg-[var(--border)] transition-colors peer-checked:bg-teal-400/70" />
-                  <div className="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
-                </div>
-                <span className="text-sm">Use as default agent connection</span>
-              </label>
-            </FieldGroup>
-          )}
+          <FieldGroup
+            label={isImageGenerationProvider ? "Default for Illustrator" : "Default for Agents"}
+            icon={<Bot size="0.875rem" className="text-teal-400" />}
+            help={
+              isImageGenerationProvider
+                ? "When enabled, the Illustrator agent will use this image generation connection by default whenever it does not have a specific Image Generation Connection assigned."
+                : "When enabled, all agents that don't have a specific connection override will use this connection instead of the chat's active connection."
+            }
+          >
+            <label className="flex items-center gap-3 cursor-pointer select-none px-2 py-1">
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={localDefaultForAgents}
+                  onChange={(e) => {
+                    setLocalDefaultForAgents(e.target.checked);
+                    markDirty();
+                  }}
+                  className="peer sr-only"
+                />
+                <div className="h-5 w-9 rounded-full bg-[var(--border)] transition-colors peer-checked:bg-teal-400/70" />
+                <div className="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4" />
+              </div>
+              <span className="text-sm">
+                {isImageGenerationProvider
+                  ? "Use as default Illustrator agent connection"
+                  : "Use as default agent connection"}
+              </span>
+            </label>
+            {isImageGenerationProvider && (
+              <p className="px-2 text-[0.625rem] text-[var(--muted-foreground)]">
+                Only one image generation connection should be marked as the default for the Illustrator agent.
+              </p>
+            )}
+          </FieldGroup>
 
           {/* ── Embedding Model (for lorebook vectorization) ── */}
           {localProvider !== "image_generation" && (

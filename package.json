@@ -1,6 +1,6 @@
 {
   "name": "marinara-engine",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "private": true,
   "description": "AI Chat & Roleplay Frontend — Conversation, Roleplay, Visual Novel",
   "author": "Marianna",
@@ -31,8 +31,7 @@
     "db:push": "pnpm --filter @marinara-engine/server db:push",
     "db:generate": "pnpm --filter @marinara-engine/server db:generate",
     "db:migrate": "pnpm --filter @marinara-engine/server db:migrate",
-    "clean": "pnpm -r --if-present run clean && node ./scripts/clean-workspace.mjs",
-    "sidecar:build": "cd packages/server && pnpm exec node-llama-cpp source download --release latest --noUsageExample"
+    "clean": "pnpm -r --if-present run clean && node ./scripts/clean-workspace.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.27.3",
@@ -42,8 +41,9 @@
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "esbuild",
-      "node-llama-cpp",
-      "sharp"
+      "sharp",
+      "onnxruntime-node",
+      "protobufjs"
     ],
     "overrides": {
       "onnxruntime-common": "1.24.3",

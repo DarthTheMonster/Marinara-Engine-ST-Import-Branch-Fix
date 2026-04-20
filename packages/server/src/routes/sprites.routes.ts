@@ -369,6 +369,8 @@ export async function spritesRoutes(app: FastifyInstance) {
     const imgModel = conn.model || "";
     const imgBaseUrl = conn.baseUrl || "https://image.pollinations.ai";
     const imgApiKey = conn.apiKey || "";
+    const imgSource = (conn as any).imageGenerationSource || imgModel;
+    const imgServiceHint = conn.imageService || imgSource;
 
     // Build the prompt for an expression sheet or full-body
     const expressionList = expressions.join(", ");
@@ -419,7 +421,7 @@ export async function spritesRoutes(app: FastifyInstance) {
             const targetWidth = 832;
             const targetHeight = 1216;
 
-            const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, {
+            const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, imgServiceHint, {
               prompt: posePrompt,
               model: imgModel,
               width: targetWidth,
@@ -483,7 +485,7 @@ export async function spritesRoutes(app: FastifyInstance) {
       const sheetWidth = cols * cellSize;
       const sheetHeight = rows * cellSize;
 
-      const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, {
+      const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, imgServiceHint, {
         prompt,
         model: imgModel,
         width: sheetWidth,

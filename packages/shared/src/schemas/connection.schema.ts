@@ -10,6 +10,7 @@ export const apiProviderSchema = z.enum([
   "mistral",
   "cohere",
   "openrouter",
+  "nanogpt",
   "custom",
   "image_generation",
 ]);
@@ -29,7 +30,9 @@ export const createConnectionSchema = z.object({
   embeddingBaseUrl: z.string().url().or(z.literal("")).default(""),
   embeddingConnectionId: z.string().nullable().default(null),
   openrouterProvider: z.string().nullable().default(null),
+  imageGenerationSource: z.string().nullable().default(null),
   comfyuiWorkflow: z.string().nullable().default(null),
+  imageService: z.string().nullable().default(null),
 });
 
 export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;

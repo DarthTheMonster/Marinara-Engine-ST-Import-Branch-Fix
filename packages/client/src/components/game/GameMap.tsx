@@ -1,12 +1,14 @@
 // ──────────────────────────────────────────────
 // Game: Map Wrapper (switches between grid and node)
 // ──────────────────────────────────────────────
-import { useState, useCallback } from "react";
+import { useState, useCallback, type RefObject } from "react";
+import { motion } from "framer-motion";
 import type { GameMap, GameActiveState } from "@marinara-engine/shared";
 import { GameGridMap } from "./GameGridMap";
 import { GameNodeMap } from "./GameNodeMap";
 import { ChevronDown, ChevronUp, Map as MapIcon, Wand2, X, Compass, MessageCircle, Swords, Moon } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { PanelLockButton, useDraggablePanel } from "./DraggablePanel";
 
 const STATE_CONFIG: Record<GameActiveState, { icon: typeof Compass; label: string; color: string }> = {
   exploration: { icon: Compass, label: "Exploration", color: "text-emerald-300" },
@@ -14,6 +16,159 @@ const STATE_CONFIG: Record<GameActiveState, { icon: typeof Compass; label: strin
   combat: { icon: Swords, label: "Combat", color: "text-red-300" },
   travel_rest: { icon: Moon, label: "Travel & Rest", color: "text-amber-300" },
 };
+
+type TimePhase = "midnight" | "night" | "dawn" | "morning" | "noon" | "afternoon" | "evening";
+
+function extractHour(timeOfDay: string): number | null {
+  const explicitTime = timeOfDay.match(/\b(\d{1,2})[:.h](\d{2})\b/);
+  if (explicitTime) {
+    let hour = Number.parseInt(explicitTime[1] ?? "", 10);
+    if (timeOfDay.includes("pm") && hour < 12) hour += 12;
+    if (timeOfDay.includes("am") && hour === 12) hour = 0;
+    return hour >= 0 && hour < 24 ? hour : null;
+  }
+
+  const amPmTime = timeOfDay.match(/\b(\d{1,2})\s*(am|pm)\b/);
+  if (amPmTime) {
+    let hour = Number.parseInt(amPmTime[1] ?? "", 10);
+    if (amPmTime[2] === "pm" && hour < 12) hour += 12;
+    if (amPmTime[2] === "am" && hour === 12) hour = 0;
+    return hour >= 0 && hour < 24 ? hour : null;
+  }
+
+  return null;
+}
+
+function normalizeTimePhase(timeOfDay?: string | null): TimePhase | null {
+  if (!timeOfDay) return null;
+  const normalized = timeOfDay.toLowerCase();
+
+  if (normalized.includes("midnight")) return "midnight";
+  if (normalized.includes("dawn") || normalized.includes("sunrise")) return "dawn";
+  if (normalized.includes("morning")) return "morning";
+  if (normalized.includes("noon") || normalized.includes("midday")) return "noon";
+  if (normalized.includes("afternoon")) return "afternoon";
+  if (normalized.includes("evening") || normalized.includes("dusk") || normalized.includes("sunset")) {
+    return "evening";
+  }
+  if (normalized.includes("night")) return "night";
+
+  const hour = extractHour(normalized);
+  if (hour == null) return null;
+  if (hour < 5) return "midnight";
+  if (hour < 7) return "dawn";
+  if (hour < 12) return "morning";
+  if (hour < 15) return "noon";
+  if (hour < 18) return "afternoon";
+  if (hour < 21) return "evening";
+  return "night";
+}
+
+function getTimePhaseLabel(phase: TimePhase): string {
+  switch (phase) {
+    case "midnight":
+      return "Midnight";
+    case "night":
+      return "Night";
+    case "dawn":
+      return "Dawn";
+    case "morning":
+      return "Morning";
+    case "noon":
+      return "Noon";
+    case "afternoon":
+      return "Afternoon";
+    case "evening":
+      return "Evening";
+  }
+}
+
+function getSkyClasses(phase: TimePhase): string {
+  switch (phase) {
+    case "midnight":
+      return "bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900";
+    case "night":
+      return "bg-gradient-to-b from-slate-800 via-indigo-900 to-slate-950";
+    case "dawn":
+      return "bg-gradient-to-b from-rose-300 via-amber-200 to-sky-300";
+    case "morning":
+      return "bg-gradient-to-b from-sky-300 via-sky-200 to-amber-100";
+    case "noon":
+      return "bg-gradient-to-b from-sky-400 via-sky-300 to-sky-200";
+    case "afternoon":
+      return "bg-gradient-to-b from-sky-400 via-cyan-300 to-amber-100";
+    case "evening":
+      return "bg-gradient-to-b from-violet-400 via-rose-300 to-amber-200";
+  }
+}
+
+function getOrbPosition(phase: TimePhase): string {
+  switch (phase) {
+    case "midnight":
+      return "left-1/2 top-[1px] -translate-x-1/2";
+    case "night":
+      return "right-[16%] top-[1px]";
+    case "dawn":
+      return "left-[12%] bottom-[1px]";
+    case "morning":
+      return "left-[26%] bottom-[1px]";
+    case "noon":
+      return "left-1/2 top-[1px] -translate-x-1/2";
+    case "afternoon":
+      return "right-[24%] bottom-[1px]";
+    case "evening":
+      return "right-[10%] bottom-[1px]";
+  }
+}
+
+interface TimeOfDayIndicatorProps {
+  timeOfDay?: string | null;
+  size?: "desktop" | "mobile";
+  className?: string;
+}
+
+function TimeOfDayIndicator({ timeOfDay, size = "desktop", className }: TimeOfDayIndicatorProps) {
+  const phase = normalizeTimePhase(timeOfDay);
+  if (!phase) return null;
+
+  const label = getTimePhaseLabel(phase);
+  const nightPhase = phase === "night" || phase === "midnight";
+
+  return (
+    <span
+      className={cn(
+        "relative shrink-0 overflow-hidden rounded-full border border-white/20 shadow-[0_2px_8px_rgba(0,0,0,0.24)]",
+        size === "mobile" ? "h-3.5 w-6" : "h-4 w-7",
+        getSkyClasses(phase),
+        className,
+      )}
+      aria-label={`Time of day: ${label}`}
+      title={`Time of day: ${label}`}
+    >
+      <span className="absolute inset-x-[12%] bottom-[2px] h-px bg-white/45" />
+      {nightPhase && (
+        <>
+          <span className="absolute left-[18%] top-[22%] h-[1.5px] w-[1.5px] rounded-full bg-white/80" />
+          <span className="absolute right-[22%] top-[30%] h-px w-px rounded-full bg-white/70" />
+        </>
+      )}
+      <span
+        className={cn(
+          "absolute rounded-full",
+          size === "mobile" ? "h-2 w-2" : "h-2.5 w-2.5",
+          getOrbPosition(phase),
+          nightPhase
+            ? "bg-slate-100 shadow-[0_0_8px_rgba(226,232,240,0.45)]"
+            : phase === "evening"
+              ? "bg-orange-200 shadow-[0_0_10px_rgba(251,146,60,0.55)]"
+              : "bg-yellow-200 shadow-[0_0_10px_rgba(253,224,71,0.55)]",
+        )}
+      >
+        {nightPhase && <span className="absolute inset-y-0 right-[-1px] w-[55%] rounded-full bg-slate-900/85" />}
+      </span>
+    </span>
+  );
+}
 
 interface GameMapProps {
   map: GameMap | null;
@@ -23,16 +178,38 @@ interface GameMapProps {
   disabled?: boolean;
   /** Current game state — shown as icon left of the location name */
   gameState?: GameActiveState;
+  /** Current time of day — shown as a compact sky indicator. */
+  timeOfDay?: string | null;
+}
+
+interface GameMapPanelProps extends GameMapProps {
+  /** Chat id used to scope persisted lock + position so layouts don't bleed across games. */
+  chatId: string;
+  /** Ref to the game surface element used as a drag boundary. */
+  constraintsRef?: RefObject<HTMLElement | null>;
 }
 
 /** Desktop: inline collapsible panel. */
-export function GameMapPanel({ map, onMove, onGenerateMap, disabled, gameState }: GameMapProps) {
+export function GameMapPanel({
+  map,
+  onMove,
+  onGenerateMap,
+  disabled,
+  gameState,
+  timeOfDay,
+  chatId,
+  constraintsRef,
+}: GameMapPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [stateHovered, setStateHovered] = useState(false);
+  const { locked, toggleLocked, x, y, handleDragEnd } = useDraggablePanel(chatId, "map");
 
   if (!map) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 p-3 text-[var(--muted-foreground)]">
+      <div
+        data-tour="game-map"
+        className="flex w-52 flex-col items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--card)]/92 p-3 text-[var(--muted-foreground)] shadow-lg backdrop-blur-sm"
+      >
         <span className="text-[0.625rem]">No map yet</span>
         {onGenerateMap && (
           <button
@@ -51,27 +228,53 @@ export function GameMapPanel({ map, onMove, onGenerateMap, disabled, gameState }
   const shouldMarquee = mapName.length > 18;
   const stateCfg = gameState ? STATE_CONFIG[gameState] : null;
   const StateIcon = stateCfg?.icon ?? null;
+  const hasLeadingStatus = Boolean(StateIcon || timeOfDay);
 
   return (
-    <div className="game-map-container flex flex-col gap-1 p-2">
-      <button
+    <motion.div
+      data-tour="game-map"
+      drag={!locked}
+      dragMomentum={false}
+      dragElastic={0}
+      dragConstraints={constraintsRef as RefObject<Element>}
+      onDragEnd={handleDragEnd}
+      style={{ x, y }}
+      className={cn(
+        "game-map-container flex w-52 flex-col gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)]/92 p-2 shadow-lg backdrop-blur-sm",
+        !locked && "cursor-grab ring-1 ring-white/20 active:cursor-grabbing",
+      )}
+    >
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setCollapsed(!collapsed)}
-        className="relative flex items-center gap-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setCollapsed(!collapsed);
+          }
+        }}
+        className="relative flex cursor-pointer items-center gap-1.5 text-xs text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)]"
       >
-        {/* State icon */}
-        {StateIcon && (
-          <span
-            className={cn("relative shrink-0", stateCfg!.color)}
-            onMouseEnter={() => setStateHovered(true)}
-            onMouseLeave={() => setStateHovered(false)}
-          >
-            <StateIcon size={13} />
-            {stateHovered && (
-              <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-[0.55rem] text-white/90 shadow z-50">
-                {stateCfg!.label}
+        {hasLeadingStatus && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            {/* State icon */}
+            {StateIcon && (
+              <span
+                className={cn("relative shrink-0", stateCfg!.color)}
+                onMouseEnter={() => setStateHovered(true)}
+                onMouseLeave={() => setStateHovered(false)}
+              >
+                <StateIcon size={13} />
+                {stateHovered && (
+                  <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-[0.55rem] text-white/90 shadow z-50">
+                    {stateCfg!.label}
+                  </span>
+                )}
               </span>
             )}
-          </span>
+            <TimeOfDayIndicator timeOfDay={timeOfDay} />
+          </div>
         )}
         <span className="block min-w-0 flex-1 overflow-hidden text-center font-semibold text-[var(--foreground)]">
           {shouldMarquee ? (
@@ -83,15 +286,16 @@ export function GameMapPanel({ map, onMove, onGenerateMap, disabled, gameState }
             <span className="block truncate">{mapName}</span>
           )}
         </span>
+        <PanelLockButton locked={locked} onToggle={toggleLocked} size={11} />
         <span className="shrink-0">{collapsed ? <ChevronDown size={12} /> : <ChevronUp size={12} />}</span>
-      </button>
+      </div>
       {!collapsed &&
         (map.type === "grid" ? (
           <GameGridMap map={map} onCellClick={(x, y) => onMove({ x, y })} />
         ) : (
           <GameNodeMap map={map} onNodeClick={(nodeId) => onMove(nodeId)} disabled={disabled} />
         ))}
-    </div>
+    </motion.div>
   );
 }
 
@@ -103,10 +307,11 @@ interface MobileMapButtonProps {
   onGenerateMap?: () => void;
   disabled?: boolean;
   gameState?: GameActiveState;
+  timeOfDay?: string | null;
 }
 
 /** Mobile-only: map icon button in top-left that opens a centered modal. */
-export function MobileMapButton({ map, onMove, onGenerateMap, disabled, gameState }: MobileMapButtonProps) {
+export function MobileMapButton({ map, onMove, onGenerateMap, disabled, gameState, timeOfDay }: MobileMapButtonProps) {
   const [open, setOpen] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
 
@@ -144,7 +349,7 @@ export function MobileMapButton({ map, onMove, onGenerateMap, disabled, gameStat
       {/* Floating map icon */}
       <button
         onClick={() => setOpen(true)}
-        className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-black/60 text-white/80 shadow-lg backdrop-blur-md transition-colors active:bg-white/10"
+        className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-black/60 text-white/80 shadow-lg backdrop-blur-md transition-colors active:bg-white/10"
       >
         <MapIcon size={18} />
       </button>
@@ -165,6 +370,7 @@ export function MobileMapButton({ map, onMove, onGenerateMap, disabled, gameStat
             {/* Header */}
             <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
               <StateIcon size={14} className={stateCfg?.color ?? "text-white/60"} />
+              <TimeOfDayIndicator timeOfDay={timeOfDay} />
               <div className="min-w-0 flex-1 overflow-hidden">
                 <p className="block overflow-hidden whitespace-nowrap text-sm font-bold text-[var(--foreground)]">
                   {(map?.name || "Map").length > 18 ? (

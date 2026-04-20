@@ -10,6 +10,7 @@ export type APIProvider =
   | "mistral"
   | "cohere"
   | "openrouter"
+  | "nanogpt"
   | "custom"
   | "image_generation";
 
@@ -36,8 +37,12 @@ export interface APIConnection {
   embeddingBaseUrl: string | null;
   /** Preferred provider when using OpenRouter (e.g. "anthropic", "google") */
   openrouterProvider: string | null;
+  /** Explicit image backend selection for image-generation connections (e.g. ComfyUI on a remote host). */
+  imageGenerationSource: string | null;
   /** ComfyUI workflow JSON for image generation */
   comfyuiWorkflow: string | null;
+  /** Explicitly selected image generation service ID (e.g. "comfyui", "automatic1111"). Overrides URL inference when set. */
+  imageService: string | null;
   /** Default generation parameters for new chats using this connection (JSON) */
   defaultParameters: string | null;
   createdAt: string;

@@ -30,21 +30,46 @@ fi
 
 # ── Check pnpm ──
 PNPM_VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).packageManager?.split('@')[1] || '10.30.3'")
+PNPM_RUNNER="pnpm"
+
+run_pnpm() {
+    if [ "$PNPM_RUNNER" = "corepack" ]; then
+        corepack "pnpm@${PNPM_VERSION}" "$@"
+    elif [ "$PNPM_RUNNER" = "npx" ]; then
+        npx --yes "pnpm@${PNPM_VERSION}" "$@"
+    else
+        pnpm "$@"
+    fi
+}
 
 if command -v corepack &> /dev/null; then
-    corepack enable >/dev/null 2>&1 || true
-fi
-
-CURRENT_PNPM_VERSION=$(pnpm -v 2>/dev/null || true)
-if [ -z "$CURRENT_PNPM_VERSION" ] || [ "$CURRENT_PNPM_VERSION" != "$PNPM_VERSION" ]; then
-    echo "  [..] Aligning pnpm to ${PNPM_VERSION}..."
-    if command -v corepack &> /dev/null; then
-        corepack prepare "pnpm@${PNPM_VERSION}" --activate >/dev/null
-    else
-        npm install -g "pnpm@${PNPM_VERSION}" >/dev/null
+    echo "  [..] Aligning pnpm to ${PNPM_VERSION} via Corepack..."
+    CURRENT_PNPM_VERSION=$(corepack "pnpm@${PNPM_VERSION}" --version 2>/dev/null || true)
+    if [ "$CURRENT_PNPM_VERSION" = "$PNPM_VERSION" ]; then
+        PNPM_RUNNER="corepack"
     fi
 fi
-echo "  [OK] pnpm ${PNPM_VERSION} ready"
+
+if [ "$PNPM_RUNNER" = "pnpm" ]; then
+    CURRENT_PNPM_VERSION=$(pnpm --version 2>/dev/null || true)
+    if [ "$CURRENT_PNPM_VERSION" != "$PNPM_VERSION" ]; then
+        CURRENT_PNPM_VERSION=""
+    fi
+fi
+
+if [ -z "$CURRENT_PNPM_VERSION" ]; then
+    echo "  [..] Using temporary pnpm ${PNPM_VERSION} via npx..."
+    CURRENT_PNPM_VERSION=$(npx --yes "pnpm@${PNPM_VERSION}" --version 2>/dev/null || true)
+    if [ "$CURRENT_PNPM_VERSION" = "$PNPM_VERSION" ]; then
+        PNPM_RUNNER="npx"
+    fi
+fi
+
+if [ -z "$CURRENT_PNPM_VERSION" ] || [ "$CURRENT_PNPM_VERSION" != "$PNPM_VERSION" ]; then
+    echo "  [ERROR] Failed to make pnpm ${PNPM_VERSION} available."
+    exit 1
+fi
+echo "  [OK] pnpm ${CURRENT_PNPM_VERSION} ready"
 
 # ── Auto-update from Git ──
 if [ -d ".git" ]; then
@@ -71,7 +96,7 @@ if [ -d ".git" ]; then
             else
                 echo "  [OK] Updated to $(git log -1 --format='%h %s' 2>/dev/null)"
                 echo "  [..] Reinstalling dependencies..."
-                pnpm install
+                run_pnpm install
                 # Force rebuild
                 rm -rf packages/shared/dist packages/server/dist packages/client/dist
                 rm -f packages/shared/tsconfig.tsbuildinfo packages/server/tsconfig.tsbuildinfo packages/client/tsconfig.tsbuildinfo
@@ -94,14 +119,14 @@ if [ -f "packages/shared/dist/constants/defaults.js" ]; then
     if [ -n "$SOURCE_VER" ] && [ -n "$DIST_VER" ] && [ "$SOURCE_VER" != "$DIST_VER" ]; then
         echo "  [WARN] Version mismatch: source v$SOURCE_VER but dist has v$DIST_VER"
         echo "  [..] Forcing rebuild to apply update..."
-        pnpm install
+        run_pnpm install
         rm -rf packages/shared/dist packages/server/dist packages/client/dist
         rm -f packages/shared/tsconfig.tsbuildinfo packages/server/tsconfig.tsbuildinfo packages/client/tsconfig.tsbuildinfo
     fi
     if [ -n "$SOURCE_COMMIT" ] && [ "$SOURCE_COMMIT" != "$DIST_COMMIT" ]; then
         echo "  [WARN] Build commit mismatch: source $SOURCE_COMMIT but dist has ${DIST_COMMIT:-<missing>}"
         echo "  [..] Forcing rebuild to apply update..."
-        pnpm install
+        run_pnpm install
         rm -rf packages/shared/dist packages/server/dist packages/client/dist
         rm -f packages/shared/tsconfig.tsbuildinfo packages/server/tsconfig.tsbuildinfo packages/client/tsconfig.tsbuildinfo
     fi
@@ -113,45 +138,21 @@ if [ ! -d "node_modules" ]; then
     echo "  [..] Installing dependencies (first run)..."
     echo "       This may take a few minutes."
     echo ""
-    pnpm install
+    run_pnpm install
 fi
 
 # ── Build if needed ──
 if [ ! -d "packages/shared/dist" ]; then
     echo "  [..] Building shared types..."
-    pnpm build:shared
+    run_pnpm build:shared
 fi
 if [ ! -d "packages/server/dist" ]; then
     echo "  [..] Building server..."
-    pnpm build:server
+    run_pnpm build:server
 fi
 if [ ! -d "packages/client/dist" ]; then
     echo "  [..] Building client..."
-    pnpm build:client
-fi
-
-# ── Sidecar (local model) — rebuild native addon if missing or stale ──
-SIDECAR_CONFIG="packages/server/data/models/sidecar-config.json"
-SIDECAR_RUNTIME_STAMP="packages/server/data/models/sidecar-runtime-stamp.txt"
-SIDECAR_RUNTIME_BUILD_ID="gemma4-runtime-v1"
-if [ -f "$SIDECAR_CONFIG" ]; then
-    NEED_SIDECAR_BUILD=0
-    LLAMA_BUILD_DIR=$(find node_modules/.pnpm -maxdepth 5 -path '*/node-llama-cpp/llama/localBuilds' -type d 2>/dev/null | head -1)
-    if [ -z "$LLAMA_BUILD_DIR" ] || [ -z "$(find "$LLAMA_BUILD_DIR" -name 'llama-addon.node' 2>/dev/null | head -1)" ]; then
-        NEED_SIDECAR_BUILD=1
-    elif [ ! -f "$SIDECAR_RUNTIME_STAMP" ] || [ "$(cat "$SIDECAR_RUNTIME_STAMP" 2>/dev/null)" != "$SIDECAR_RUNTIME_BUILD_ID" ]; then
-        NEED_SIDECAR_BUILD=1
-    fi
-
-    if [ "$NEED_SIDECAR_BUILD" = "1" ]; then
-        echo "  [..] Rebuilding sidecar runtime for Gemma 4 support (may take a few minutes)..."
-        if pnpm sidecar:build; then
-            printf '%s\n' "$SIDECAR_RUNTIME_BUILD_ID" > "$SIDECAR_RUNTIME_STAMP"
-            echo "  [OK] Sidecar addon ready"
-        else
-            echo "  [WARN] Sidecar addon build failed. The local Gemma model may not load until this succeeds."
-        fi
-    fi
+    run_pnpm build:client
 fi
 
 # Database migrations are handled automatically at server startup by runMigrations()

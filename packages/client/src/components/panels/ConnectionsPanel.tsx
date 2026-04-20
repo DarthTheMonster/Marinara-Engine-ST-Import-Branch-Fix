@@ -1,32 +1,21 @@
 // ──────────────────────────────────────────────
 // Panel: API Connections (polished)
 // ──────────────────────────────────────────────
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   useConnections,
-  useCreateConnection,
   useDuplicateConnection,
   useDeleteConnection,
   useUpdateConnection,
 } from "../../hooks/use-connections";
+import { useAgentConfigs, useCreateAgent, useUpdateAgent } from "../../hooks/use-agents";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
 import { useSidecarStore } from "../../stores/sidecar.store";
-import {
-  Plus,
-  Trash2,
-  Link,
-  Loader2,
-  Check,
-  Shuffle,
-  ExternalLink,
-  X,
-  Copy,
-  BrainCircuit,
-  Download,
-  Trash,
-} from "lucide-react";
+import { BUILT_IN_AGENTS, LOCAL_SIDECAR_CONNECTION_ID, getDefaultAgentPrompt } from "@marinara-engine/shared";
+import { Plus, Trash2, Link, Check, Shuffle, ExternalLink, X, Copy, BrainCircuit, Download, Trash } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { toast } from "sonner";
 
 /** Provider → gradient color pair for connection icons. */
 const PROVIDER_COLORS: Record<string, { from: string; to: string; ring: string; badge: string }> = {
@@ -52,14 +41,68 @@ function formatBytes(bytes: number): string {
 }
 
 function SidecarCard() {
-  const { status, config, modelSize, setShowDownloadModal, updateConfig, deleteModel, fetchStatus } = useSidecarStore();
-  const isDownloaded = status === "downloaded" || status === "ready" || status === "loading";
+  const { data: agentConfigs } = useAgentConfigs();
+  const createAgent = useCreateAgent();
+  const updateAgent = useUpdateAgent();
+  const { status, config, modelDownloaded, modelSize, setShowDownloadModal, updateConfig, deleteModel, fetchStatus } =
+    useSidecarStore();
+  const isDownloaded = modelDownloaded;
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [assigningTrackers, setAssigningTrackers] = useState(false);
+  const activeModelName = isDownloaded ? (config.modelPath?.split("/").pop() ?? null) : null;
+  const trackerAgents = useMemo(() => BUILT_IN_AGENTS.filter((agent) => agent.category === "tracker"), []);
+  const trackerLocalCount = useMemo(() => {
+    const configs = (agentConfigs ?? []) as Array<{ type: string; connectionId: string | null }>;
+    const byType = new Map(configs.map((cfg) => [cfg.type, cfg.connectionId]));
+    return trackerAgents.filter((agent) => byType.get(agent.id) === LOCAL_SIDECAR_CONNECTION_ID).length;
+  }, [agentConfigs, trackerAgents]);
 
   // Fetch status on mount (handles HMR store resets and initial load)
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);
+
+  const handleAssignTrackersToLocal = async () => {
+    if (!isDownloaded || assigningTrackers) return;
+
+    setAssigningTrackers(true);
+    try {
+      const configs = (agentConfigs ?? []) as Array<{
+        id: string;
+        type: string;
+        connectionId: string | null;
+      }>;
+      const configByType = new Map(configs.map((cfg) => [cfg.type, cfg]));
+
+      await Promise.all(
+        trackerAgents.map(async (agent) => {
+          const existing = configByType.get(agent.id);
+          if (existing) {
+            if (existing.connectionId === LOCAL_SIDECAR_CONNECTION_ID) return;
+            await updateAgent.mutateAsync({ id: existing.id, connectionId: LOCAL_SIDECAR_CONNECTION_ID });
+            return;
+          }
+
+          await createAgent.mutateAsync({
+            type: agent.id,
+            name: agent.name,
+            description: agent.description,
+            phase: agent.phase,
+            enabled: agent.enabledByDefault,
+            connectionId: LOCAL_SIDECAR_CONNECTION_ID,
+            promptTemplate: getDefaultAgentPrompt(agent.id),
+            settings: {},
+          });
+        }),
+      );
+
+      toast.success("All built-in tracker agents now point to the local model.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update tracker agent connections.");
+    } finally {
+      setAssigningTrackers(false);
+    }
+  };
 
   return (
     <div className="rounded-xl border border-purple-400/20 bg-gradient-to-br from-purple-500/5 to-fuchsia-500/5 p-3">
@@ -71,7 +114,15 @@ function SidecarCard() {
           <div className="text-sm font-medium">Local Model</div>
           <div className="text-[0.6875rem] text-[var(--muted-foreground)]">
             {isDownloaded
-              ? `Gemma 4 E2B • ${config.quantization?.toUpperCase()}${modelSize ? ` • ${formatBytes(modelSize)}` : ""}`
+              ? `${activeModelName ?? "Model"}${modelSize ? ` • ${formatBytes(modelSize)}` : ""}${
+                  status === "starting_server"
+                    ? " • Starting"
+                    : status === "server_error"
+                      ? " • Error"
+                      : status === "ready"
+                        ? " • Ready"
+                        : ""
+                }`
               : "Not downloaded"}
           </div>
         </div>
@@ -116,31 +167,31 @@ function SidecarCard() {
           </button>
         )}
       </div>
-
-      {/* Toggles (only when model is downloaded) */}
+      {/* Local model actions (only when model is downloaded) */}
       {isDownloaded && (
         <div className="mt-2.5 flex flex-col gap-1.5 border-t border-purple-400/10 pt-2.5">
           <button
             type="button"
-            onClick={() => updateConfig({ useForTrackers: !config.useForTrackers })}
-            className="flex items-center gap-2.5 cursor-pointer select-none text-left"
+            onClick={() => void handleAssignTrackersToLocal()}
+            disabled={assigningTrackers}
+            className="flex items-center justify-between gap-3 rounded-lg border border-purple-400/15 bg-purple-400/8 px-3 py-2 text-left transition-all hover:bg-purple-400/12 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <div className="relative shrink-0">
-              <div
-                className={cn(
-                  "h-4 w-7 rounded-full transition-colors",
-                  config.useForTrackers ? "bg-purple-400/70" : "bg-[var(--border)]",
-                )}
-              />
-              <div
-                className={cn(
-                  "absolute top-0.5 left-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-transform",
-                  config.useForTrackers && "translate-x-3",
-                )}
-              />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-purple-200">Use local model for all tracker agents</div>
+              <div className="mt-0.5 text-[0.625rem] text-[var(--muted-foreground)]">
+                Assigns the built-in local model as the connection override for every built-in tracker agent.
+              </div>
             </div>
-            <span className="text-xs text-[var(--muted-foreground)]">Use for tracker agents (roleplay)</span>
+            {assigningTrackers ? (
+              <BrainCircuit size="0.875rem" className="animate-pulse text-purple-300" />
+            ) : (
+              <Link size="0.875rem" className="text-purple-300" />
+            )}
           </button>
+          <p className="px-0.5 text-[0.625rem] text-[var(--muted-foreground)]">
+            {trackerLocalCount}/{trackerAgents.length} built-in tracker agents currently point at the local model. This
+            changes which model they use when enabled; it does not enable the agents by itself.
+          </p>
           <button
             type="button"
             onClick={() => updateConfig({ useForGameScene: !config.useForGameScene })}
@@ -170,7 +221,6 @@ function SidecarCard() {
 
 export function ConnectionsPanel() {
   const { data: connections, isLoading } = useConnections();
-  const createConnection = useCreateConnection();
   const duplicateConnection = useDuplicateConnection();
   const deleteConnection = useDeleteConnection();
   const updateConnection = useUpdateConnection();
@@ -178,19 +228,9 @@ export function ConnectionsPanel() {
 
   const activeConnectionId = activeChat?.connectionId ?? null;
   const openConnectionDetail = useUIStore((s) => s.openConnectionDetail);
+  const openModal = useUIStore((s) => s.openModal);
   const linkApiBannerDismissed = useUIStore((s) => s.linkApiBannerDismissed);
   const dismissLinkApiBanner = useUIStore((s) => s.dismissLinkApiBanner);
-
-  const handleCreate = () => {
-    createConnection.mutate(
-      { name: "New Connection", provider: "openai", apiKey: "" },
-      {
-        onSuccess: (data: any) => {
-          if (data?.id) openConnectionDetail(data.id);
-        },
-      },
-    );
-  };
 
   return (
     <div className="flex flex-col gap-2 p-3">
@@ -198,11 +238,10 @@ export function ConnectionsPanel() {
       <SidecarCard />
 
       <button
-        onClick={handleCreate}
-        disabled={createConnection.isPending}
-        className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-medium transition-all active:scale-[0.98] bg-gradient-to-r from-sky-400 to-blue-500 text-white shadow-md shadow-sky-400/15 hover:shadow-lg hover:shadow-sky-400/25 disabled:opacity-50"
+        onClick={() => openModal("create-connection")}
+        className="flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-medium transition-all active:scale-[0.98] bg-gradient-to-r from-sky-400 to-blue-500 text-white shadow-md shadow-sky-400/15 hover:shadow-lg hover:shadow-sky-400/25"
       >
-        {createConnection.isPending ? <Loader2 size="0.8125rem" className="animate-spin" /> : <Plus size="0.8125rem" />}
+        <Plus size="0.8125rem" />
         Add Connection
       </button>
 
@@ -271,7 +310,7 @@ export function ConnectionsPanel() {
               key={conn.id}
               onClick={() => openConnectionDetail(conn.id)}
               className={cn(
-                "group flex cursor-pointer items-center gap-3 rounded-xl p-2.5 transition-all hover:bg-[var(--sidebar-accent)]",
+                "group relative flex cursor-pointer items-center gap-3 rounded-xl p-2.5 transition-all hover:bg-[var(--sidebar-accent)]",
                 isSelected && `ring-1 ${colors.ring} bg-[var(--sidebar-accent)]/50`,
               )}
             >
@@ -302,7 +341,7 @@ export function ConnectionsPanel() {
                   {conn.provider} • {conn.model || "No model set"}
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-0.5">
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex shrink-0 items-center gap-0.5 rounded-lg bg-[var(--sidebar)] px-1 py-0.5 opacity-0 shadow-sm ring-1 ring-[var(--border)] transition-opacity group-hover:opacity-100 max-md:opacity-100">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -312,11 +351,11 @@ export function ConnectionsPanel() {
                     "rounded-lg p-1.5 transition-all active:scale-90",
                     inRandomPool
                       ? "bg-amber-400/15 text-amber-400"
-                      : "text-[var(--muted-foreground)] opacity-0 group-hover:opacity-100 max-md:opacity-100 hover:bg-amber-400/10 hover:text-amber-400",
+                      : "text-[var(--muted-foreground)] hover:bg-amber-400/10 hover:text-amber-400",
                   )}
                   title={inRandomPool ? "In random pool (click to remove)" : "Add to random pool"}
                 >
-                  <Shuffle size="0.8125rem" />
+                  <Shuffle size="0.75rem" />
                 </button>
                 <button
                   onClick={(e) => {
@@ -327,19 +366,21 @@ export function ConnectionsPanel() {
                       },
                     });
                   }}
-                  className="rounded-lg p-1.5 text-[var(--muted-foreground)] opacity-0 group-hover:opacity-100 max-md:opacity-100 transition-all hover:bg-sky-400/10 hover:text-sky-400 active:scale-90"
-                  title="Duplicate connection"
+                  className="rounded-lg p-1.5 text-[var(--muted-foreground)] transition-all hover:bg-sky-400/10 hover:text-sky-400 active:scale-90"
+                  title="Duplicate"
                 >
-                  <Copy size="0.8125rem" />
+                  <Copy size="0.75rem" />
                 </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (!confirm(`Delete "${conn.name}"? This cannot be undone.`)) return;
                     deleteConnection.mutate(conn.id);
                   }}
-                  className="rounded-lg p-1.5 opacity-0 transition-all hover:bg-[var(--destructive)]/15 group-hover:opacity-100 max-md:opacity-100 active:scale-90"
+                  className="rounded-lg p-1.5 transition-all hover:bg-[var(--destructive)]/15 active:scale-90"
+                  title="Delete"
                 >
-                  <Trash2 size="0.8125rem" className="text-[var(--destructive)]" />
+                  <Trash2 size="0.75rem" className="text-[var(--destructive)]" />
                 </button>
               </div>
             </div>

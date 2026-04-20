@@ -2,9 +2,15 @@
 // Routes: Connections
 // ──────────────────────────────────────────────
 import type { FastifyInstance } from "fastify";
-import { createConnectionSchema } from "@marinara-engine/shared";
+import { createConnectionSchema, inferImageSource } from "@marinara-engine/shared";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
+
+function resolveImageGenerationSource(conn: Record<string, unknown>, baseUrl: string): string {
+  const explicitSource = typeof conn.imageGenerationSource === "string" ? conn.imageGenerationSource : "";
+  const model = typeof conn.model === "string" ? conn.model : "";
+  return inferImageSource(explicitSource || model, baseUrl);
+}
 
 export async function connectionsRoutes(app: FastifyInstance) {
   const storage = createConnectionsStorage(app.db);
@@ -83,18 +89,17 @@ export async function connectionsRoutes(app: FastifyInstance) {
         headers[provider.apiKeyHeader] = conn.apiKey;
       }
 
+      const imageSource =
+        conn.provider === "image_generation" ? resolveImageGenerationSource(conn as any, baseUrl) : "";
       // image_generation has no standard modelsEndpoint — use provider-specific checks
       let testUrl: string;
-      if (conn.provider === "image_generation" && baseUrl.toLowerCase().includes("novelai.net")) {
+      if (conn.provider === "image_generation" && imageSource === "novelai") {
         // NovelAI: validate the API key via the user subscription endpoint
         testUrl = "https://api.novelai.net/user/subscription";
-      } else if (
-        conn.provider === "image_generation" &&
-        (baseUrl.includes(":8188") || baseUrl.toLowerCase().includes("comfyui"))
-      ) {
+      } else if (conn.provider === "image_generation" && imageSource === "comfyui") {
         // ComfyUI: ping the system stats endpoint
         testUrl = `${baseUrl}/system_stats`;
-      } else if (conn.provider === "image_generation" && baseUrl.includes(":7860")) {
+      } else if (conn.provider === "image_generation" && imageSource === "automatic1111") {
         // AUTOMATIC1111 / SD Web UI: ping the internal ping endpoint
         testUrl = `${baseUrl}/sdapi/v1/options`;
       } else {
@@ -153,10 +158,18 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       // ── Special handling for local image gen services ──
+      const imageSource =
+        conn.provider === "image_generation" ? resolveImageGenerationSource(conn as any, baseUrl) : "";
       const lowerBase = baseUrl.toLowerCase();
+      const sanitizeProviderBody = (body: string): string => {
+        if (body.includes("<html") || body.includes("<!DOCTYPE")) {
+          return "Provider returned an HTML page instead of JSON. Check the Base URL for this image service.";
+        }
+        return body.slice(0, 300);
+      };
 
       // ComfyUI: fetch checkpoints from object_info
-      if (conn.provider === "image_generation" && (lowerBase.includes(":8188") || lowerBase.includes("comfyui"))) {
+      if (conn.provider === "image_generation" && imageSource === "comfyui") {
         const res = await fetch(`${baseUrl}/object_info/CheckpointLoaderSimple`);
         if (!res.ok) {
           return reply.status(502).send({ error: `ComfyUI returned ${res.status}` });
@@ -169,7 +182,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
       }
 
       // AUTOMATIC1111 / SD Web UI: fetch models from /sdapi/v1/sd-models
-      if (conn.provider === "image_generation" && lowerBase.includes(":7860")) {
+      if (conn.provider === "image_generation" && imageSource === "automatic1111") {
         const res = await fetch(`${baseUrl}/sdapi/v1/sd-models`);
         if (!res.ok) {
           return reply.status(502).send({ error: `SD Web UI returned ${res.status}` });
@@ -182,6 +195,27 @@ export async function connectionsRoutes(app: FastifyInstance) {
         };
       }
 
+      if (conn.provider === "image_generation" && lowerBase.includes("nano-gpt.com")) {
+        const res = await fetch(`${baseUrl}/image-models`, { headers });
+        if (!res.ok) {
+          const body = await res.text();
+          return reply.status(502).send({ error: `Provider returned ${res.status}: ${sanitizeProviderBody(body)}` });
+        }
+        const text = await res.text();
+        let json: Record<string, unknown>;
+        try {
+          json = JSON.parse(text) as Record<string, unknown>;
+        } catch {
+          return reply.status(502).send({
+            error: `Failed to fetch models: ${sanitizeProviderBody(text)}`,
+          });
+        }
+        const data = (json.data ?? []) as Array<{ id?: string; name?: string }>;
+        return {
+          models: data.map((m) => ({ id: m.id ?? "", name: m.name ?? m.id ?? "" })).filter((m) => m.id),
+        };
+      }
+
       let modelsUrl = `${baseUrl}${provider?.modelsEndpoint ?? "/models"}`;
       if (conn.provider === "google") {
         modelsUrl += `?key=${conn.apiKey}`;
@@ -191,11 +225,19 @@ export async function connectionsRoutes(app: FastifyInstance) {
       if (!res.ok) {
         const body = await res.text();
         return reply.status(502).send({
-          error: `Provider returned ${res.status}: ${body.slice(0, 300)}`,
+          error: `Provider returned ${res.status}: ${sanitizeProviderBody(body)}`,
         });
       }
 
-      const json = (await res.json()) as Record<string, unknown>;
+      const text = await res.text();
+      let json: Record<string, unknown>;
+      try {
+        json = JSON.parse(text) as Record<string, unknown>;
+      } catch {
+        return reply.status(502).send({
+          error: `Failed to fetch models: ${sanitizeProviderBody(text)}`,
+        });
+      }
 
       // Normalize across providers
       const models = normalizeModelsResponse(conn.provider, json);
@@ -226,7 +268,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
     const start = Date.now();
     try {
-      const provider = createLLMProvider(conn.provider, baseUrl, conn.apiKey);
+      const provider = createLLMProvider(conn.provider, baseUrl, conn.apiKey, conn.maxContext, conn.openrouterProvider);
 
       let fullResponse = "";
       for await (const chunk of provider.chat([{ role: "user", content: "hi" }], {

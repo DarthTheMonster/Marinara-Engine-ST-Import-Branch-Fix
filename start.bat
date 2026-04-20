@@ -1,5 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
+cd /d "%~dp0"
 title Marinara Engine
 color 0A
 echo.
@@ -21,31 +22,45 @@ if errorlevel 1 (
 :: Resolve the repo-pinned pnpm version from package.json
 set "PNPM_VERSION=10.30.3"
 for /f "usebackq delims=" %%i in (`node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).packageManager?.split('@')[1] || '10.30.3'"`) do set "PNPM_VERSION=%%i"
-
-where corepack >nul 2>&1
-if not errorlevel 1 set "HAS_COREPACK=1"
+set "PNPM_RUNNER=pnpm"
+set "CURRENT_PNPM_VERSION="
 
 :: Ensure pnpm is available before any update/install path uses it
-where pnpm >nul 2>&1
-if errorlevel 1 (
-    echo  [..] pnpm not found, installing %PNPM_VERSION%...
-    if defined HAS_COREPACK (
-        corepack enable >nul 2>&1
-        corepack prepare pnpm@%PNPM_VERSION% --activate
+where corepack >nul 2>&1
+if not errorlevel 1 (
+    echo  [..] Aligning pnpm to %PNPM_VERSION% via Corepack...
+    for /f "usebackq delims=" %%i in (`corepack pnpm@%PNPM_VERSION% --version 2^>nul`) do set "CURRENT_PNPM_VERSION=%%i"
+    if /I "!CURRENT_PNPM_VERSION!"=="%PNPM_VERSION%" (
+        set "PNPM_RUNNER=corepack"
     ) else (
-        call npm install -g pnpm@%PNPM_VERSION%
+        set "CURRENT_PNPM_VERSION="
     )
-) else (
-    for /f "usebackq delims=" %%i in (`pnpm -v`) do set "CURRENT_PNPM_VERSION=%%i"
-    if /I not "!CURRENT_PNPM_VERSION!"=="%PNPM_VERSION%" (
-        echo  [..] Aligning pnpm to %PNPM_VERSION%...
-        if defined HAS_COREPACK (
-            corepack enable >nul 2>&1
-            corepack prepare pnpm@%PNPM_VERSION% --activate
-        ) else (
-            call npm install -g pnpm@%PNPM_VERSION%
+)
+
+if not defined CURRENT_PNPM_VERSION (
+    where pnpm >nul 2>&1
+    if not errorlevel 1 (
+        for /f "usebackq delims=" %%i in (`pnpm --version 2^>nul`) do set "CURRENT_PNPM_VERSION=%%i"
+        if /I not "!CURRENT_PNPM_VERSION!"=="%PNPM_VERSION%" (
+            set "CURRENT_PNPM_VERSION="
         )
     )
+)
+
+if not defined CURRENT_PNPM_VERSION (
+    echo  [..] Using temporary pnpm %PNPM_VERSION% via npx...
+    for /f "usebackq delims=" %%i in (`npx --yes pnpm@%PNPM_VERSION% --version 2^>nul`) do set "CURRENT_PNPM_VERSION=%%i"
+    if /I "!CURRENT_PNPM_VERSION!"=="%PNPM_VERSION%" (
+        set "PNPM_RUNNER=npx"
+    ) else (
+        set "CURRENT_PNPM_VERSION="
+    )
+)
+
+if not defined CURRENT_PNPM_VERSION (
+    echo  [ERROR] Failed to make pnpm %PNPM_VERSION% available.
+    pause
+    exit /b 1
 )
 
 :: Auto-update from Git
@@ -87,7 +102,7 @@ if /I not "!NEW_HEAD!"=="!TARGET_HEAD!" (
 if "!STASHED!"=="1" git stash pop -q >nul 2>&1
 echo  [OK] Updated to latest version
 echo  [..] Reinstalling dependencies...
-call pnpm install
+call :run_pnpm install
 if exist "packages\shared\dist" rmdir /s /q "packages\shared\dist"
 if exist "packages\server\dist" rmdir /s /q "packages\server\dist"
 if exist "packages\client\dist" rmdir /s /q "packages\client\dist"
@@ -98,7 +113,7 @@ del /q "packages\client\tsconfig.tsbuildinfo" 2>nul
 :skip_update
 echo  [OK] Node.js found:
 node -v
-echo  [OK] pnpm %PNPM_VERSION% ready
+echo  [OK] pnpm !CURRENT_PNPM_VERSION! ready
 
 :: Detect stale dist (source updated but dist not rebuilt)
 if not exist "packages\shared\dist\constants\defaults.js" goto :skip_version_check
@@ -109,7 +124,7 @@ for /f "usebackq delims=" %%i in (`node -e "try{const m=require('./packages/serv
 if not "!SOURCE_VER!"=="" if not "!DIST_VER!"=="" if not "!SOURCE_VER!"=="!DIST_VER!" (
     echo  [WARN] Version mismatch: source v!SOURCE_VER! but dist has v!DIST_VER!
     echo  [..] Forcing rebuild to apply update...
-    call pnpm install
+    call :run_pnpm install
     if exist "packages\shared\dist" rmdir /s /q "packages\shared\dist"
     if exist "packages\server\dist" rmdir /s /q "packages\server\dist"
     if exist "packages\client\dist" rmdir /s /q "packages\client\dist"
@@ -120,7 +135,7 @@ if not "!SOURCE_VER!"=="" if not "!DIST_VER!"=="" if not "!SOURCE_VER!"=="!DIST_
 if not "!SOURCE_COMMIT!"=="" if /I not "!SOURCE_COMMIT!"=="!DIST_COMMIT!" (
     echo  [WARN] Build commit mismatch: source !SOURCE_COMMIT! but dist has !DIST_COMMIT!
     echo  [..] Forcing rebuild to apply update...
-    call pnpm install
+    call :run_pnpm install
     if exist "packages\shared\dist" rmdir /s /q "packages\shared\dist"
     if exist "packages\server\dist" rmdir /s /q "packages\server\dist"
     if exist "packages\client\dist" rmdir /s /q "packages\client\dist"
@@ -136,7 +151,7 @@ echo.
 echo  [..] Installing dependencies (first run)...
 echo      This may take a few minutes.
 echo.
-call pnpm install
+call :run_pnpm install
 if errorlevel 1 echo  [ERROR] Failed to install dependencies. & pause & exit /b 1
 
 :skip_install
@@ -144,40 +159,15 @@ if errorlevel 1 echo  [ERROR] Failed to install dependencies. & pause & exit /b 
 :: Build if needed
 if not exist "packages\shared\dist" (
     echo  [..] Building shared types...
-    call pnpm build:shared
+    call :run_pnpm build:shared
 )
 if not exist "packages\server\dist" (
     echo  [..] Building server...
-    call pnpm build:server
+    call :run_pnpm build:server
 )
 if not exist "packages\client\dist" (
     echo  [..] Building client...
-    call pnpm build:client
-)
-
-:: Sidecar (local model) - rebuild native addon if missing or stale
-set "SIDECAR_RUNTIME_STAMP=packages\server\data\models\sidecar-runtime-stamp.txt"
-set "SIDECAR_RUNTIME_BUILD_ID=gemma4-runtime-v1"
-if exist "packages\server\data\models\sidecar-config.json" (
-    set "NEED_SIDECAR_BUILD="
-    set "LLAMA_ADDON_FOUND="
-    for /f "delims=" %%F in ('dir /s /b "node_modules\.pnpm\*llama-addon.node" 2^>nul') do set "LLAMA_ADDON_FOUND=1"
-    if not defined LLAMA_ADDON_FOUND set "NEED_SIDECAR_BUILD=1"
-    if not defined NEED_SIDECAR_BUILD (
-        set "CURRENT_SIDECAR_STAMP="
-        if exist "%SIDECAR_RUNTIME_STAMP%" set /p CURRENT_SIDECAR_STAMP=<"%SIDECAR_RUNTIME_STAMP%"
-        if /I not "!CURRENT_SIDECAR_STAMP!"=="%SIDECAR_RUNTIME_BUILD_ID%" set "NEED_SIDECAR_BUILD=1"
-    )
-    if defined NEED_SIDECAR_BUILD (
-        echo  [..] Rebuilding sidecar runtime for Gemma 4 support ^(may take a few minutes^)...
-        call pnpm sidecar:build
-        if errorlevel 1 (
-            echo  [WARN] Sidecar addon build failed. The local Gemma model may not load until this succeeds.
-        ) else (
-            >"%SIDECAR_RUNTIME_STAMP%" echo %SIDECAR_RUNTIME_BUILD_ID%
-            echo  [OK] Sidecar addon ready
-        )
-    )
+    call :run_pnpm build:client
 )
 
 :: Database migrations are handled automatically at server startup by runMigrations()
@@ -228,3 +218,16 @@ if errorlevel 1 (
     echo.
     pause
 )
+goto :eof
+
+:run_pnpm
+if /I "%PNPM_RUNNER%"=="corepack" (
+    call corepack pnpm@%PNPM_VERSION% %*
+) else (
+    if /I "%PNPM_RUNNER%"=="npx" (
+        call npx --yes pnpm@%PNPM_VERSION% %*
+    ) else (
+        call pnpm %*
+    )
+)
+exit /b %errorlevel%

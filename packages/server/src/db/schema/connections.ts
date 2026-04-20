@@ -7,7 +7,7 @@ export const apiConnections = sqliteTable("api_connections", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   provider: text("provider", {
-    enum: ["openai", "anthropic", "google", "mistral", "cohere", "openrouter", "custom", "image_generation"],
+    enum: ["openai", "anthropic", "google", "mistral", "cohere", "openrouter", "nanogpt", "custom", "image_generation"],
   }).notNull(),
   baseUrl: text("base_url").notNull().default(""),
   /** Encrypted API key */
@@ -29,8 +29,12 @@ export const apiConnections = sqliteTable("api_connections", {
   embeddingConnectionId: text("embedding_connection_id"),
   /** OpenRouter: preferred provider for model routing (e.g. "Anthropic", "Google") */
   openrouterProvider: text("openrouter_provider"),
+  /** Explicit image backend selection for image-generation connections */
+  imageGenerationSource: text("image_generation_source"),
   /** ComfyUI: custom workflow JSON with placeholders (%prompt%, %width%, etc.) */
   comfyuiWorkflow: text("comfyui_workflow"),
+  /** Image generation: explicitly selected service ID (e.g. "comfyui", "automatic1111"). Overrides URL inference. */
+  imageService: text("image_service"),
   /** Default generation parameters (stored as JSON) for new chats using this connection */
   defaultParameters: text("default_parameters"),
   createdAt: text("created_at").notNull(),

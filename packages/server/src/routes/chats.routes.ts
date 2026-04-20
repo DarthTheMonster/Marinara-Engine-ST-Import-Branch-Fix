@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import type { FastifyInstance } from "fastify";
 import {
+  LOCAL_SIDECAR_CONNECTION_ID,
   createChatSchema,
   createMessageSchema,
   getDefaultAgentPrompt,
@@ -12,6 +13,8 @@ import {
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
+import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../services/llm/local-sidecar.js";
+import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { wrapContent } from "../services/prompt/format-engine.js";
 import { newId } from "../utils/id-generator.js";
 import { characters } from "../db/schema/index.js";
@@ -1066,8 +1069,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       Math.min(200, Number(body.contextSize) || (chatMeta.summaryContextSize as number) || 50),
     );
 
-    const connId = chat.connectionId;
-    if (!connId) return reply.status(400).send({ error: "No API connection configured for this chat" });
+    const chatConnId = chat.connectionId;
 
     const connections = createConnectionsStorage(app.db);
 
@@ -1084,29 +1086,35 @@ export async function chatsRoutes(app: FastifyInstance) {
 
     // Fall back to the chat connection
     if (!resolvedConnId) {
-      resolvedConnId = connId;
+      resolvedConnId = chatConnId ?? null;
     }
 
-    // Resolve random pool if needed
-    let id = resolvedConnId;
-    if (id === "random") {
-      const pool = await connections.listRandomPool();
-      if (!pool.length) return reply.status(400).send({ error: "No connections in random pool" });
-      id = pool[Math.floor(Math.random() * pool.length)]!.id;
-    }
-    const conn = await connections.getWithKey(id);
-    if (!conn) return reply.status(400).send({ error: "API connection not found" });
+    if (!resolvedConnId) return reply.status(400).send({ error: "No API connection configured for this chat" });
 
-    let baseUrl = conn.baseUrl;
-    if (!baseUrl) {
-      const { PROVIDERS } = await import("@marinara-engine/shared");
-      const providerDef = PROVIDERS[conn.provider as keyof typeof PROVIDERS];
-      baseUrl = providerDef?.defaultBaseUrl ?? "";
-    }
-    if (!baseUrl) return reply.status(400).send({ error: "No base URL for this connection" });
+    let provider = getLocalSidecarProvider();
+    let model = LOCAL_SIDECAR_MODEL;
 
-    const { createLLMProvider } = await import("../services/llm/provider-registry.js");
-    const provider = createLLMProvider(conn.provider, baseUrl, conn.apiKey);
+    if (resolvedConnId !== LOCAL_SIDECAR_CONNECTION_ID) {
+      let id = resolvedConnId;
+      if (id === "random") {
+        const pool = await connections.listRandomPool();
+        if (!pool.length) return reply.status(400).send({ error: "No connections in random pool" });
+        id = pool[Math.floor(Math.random() * pool.length)]!.id;
+      }
+      const conn = await connections.getWithKey(id);
+      if (!conn) return reply.status(400).send({ error: "API connection not found" });
+
+      let baseUrl = conn.baseUrl;
+      if (!baseUrl) {
+        const { PROVIDERS } = await import("@marinara-engine/shared");
+        const providerDef = PROVIDERS[conn.provider as keyof typeof PROVIDERS];
+        baseUrl = providerDef?.defaultBaseUrl ?? "";
+      }
+      if (!baseUrl) return reply.status(400).send({ error: "No base URL for this connection" });
+
+      provider = createLLMProvider(conn.provider, baseUrl, conn.apiKey, conn.maxContext, conn.openrouterProvider);
+      model = conn.model;
+    }
 
     // Build conversation context (use contextSize from popover)
     const allMessages = await storage.listMessages(req.params.id);
@@ -1126,7 +1134,7 @@ export async function chatsRoutes(app: FastifyInstance) {
     ];
 
     const result = await provider.chatComplete(messages, {
-      model: conn.model,
+      model,
       temperature: 0.5,
       maxTokens: 2048,
     });

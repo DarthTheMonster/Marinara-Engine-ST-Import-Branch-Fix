@@ -9,6 +9,7 @@ import {
   findKnownModel,
   nameToXmlTag,
   DEFAULT_AGENT_TOOLS,
+  LOCAL_SIDECAR_CONNECTION_ID,
 } from "@marinara-engine/shared";
 import type {
   AgentContext,
@@ -31,14 +32,22 @@ import { createRegexScriptsStorage } from "../services/storage/regex-scripts.sto
 import { processLorebooks } from "../services/lorebook/index.js";
 import { injectAtDepth } from "../services/lorebook/prompt-injector.js";
 import { createLLMProvider } from "../services/llm/provider-registry.js";
+import { extractLeadingThinkingBlocks } from "../services/llm/inline-thinking.js";
 import { assemblePrompt, type AssemblerInput } from "../services/prompt/index.js";
 import { mergeAdjacentMessages } from "../services/prompt/merger.js";
 import { wrapContent } from "../services/prompt/format-engine.js";
-import type { LLMToolDefinition, ChatMessage, LLMUsage } from "../services/llm/base-provider.js";
+import {
+  fitMessagesToContext,
+  type BaseLLMProvider,
+  type LLMToolDefinition,
+  type ChatMessage,
+  type LLMUsage,
+} from "../services/llm/base-provider.js";
 import { executeToolCalls } from "../services/tools/tool-executor.js";
 import { createAgentPipeline, type ResolvedAgent, type AgentInjection } from "../services/agents/agent-pipeline.js";
 import { DATA_DIR } from "../utils/data-dir.js";
 import { executeAgent } from "../services/agents/agent-executor.js";
+import { getLocalSidecarProvider, LOCAL_SIDECAR_MODEL } from "../services/llm/local-sidecar.js";
 import {
   parseCharacterCommands,
   parseDuration,
@@ -88,6 +97,7 @@ import {
   type Journal,
 } from "../services/game/journal.service.js";
 import { buildGmSystemPrompt, buildGmFormatReminder, type GmPromptContext } from "../services/game/gm-prompts.js";
+import { syncGameMapPartyPosition } from "../services/game/map-position.service.js";
 import { applyAllSegmentEdits } from "../services/game/segment-edits.js";
 import { listPartySprites } from "../services/game/sprite.service.js";
 import {
@@ -96,8 +106,9 @@ import {
   type PerceptionContext,
 } from "../services/game/perception.service.js";
 import { getMoraleTier, formatMoraleContext } from "../services/game/morale.service.js";
-import type { GameNpc } from "@marinara-engine/shared";
+import type { GameMap, GameNpc } from "@marinara-engine/shared";
 import { sidecarModelService } from "../services/sidecar/sidecar-model.service.js";
+import { isInferenceAvailable as isSidecarInferenceAvailable } from "../services/sidecar/sidecar-inference.service.js";
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 
@@ -135,6 +146,20 @@ function readAvatarBase64(avatarPath: string | null | undefined): string | undef
   } catch {
     return undefined;
   }
+}
+
+function normalizeMaxContext(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
+  return Math.floor(value);
+}
+
+function minContextLimit(...limits: Array<number | undefined>): number | undefined {
+  let resolved: number | undefined;
+  for (const limit of limits) {
+    if (limit === undefined) continue;
+    resolved = resolved === undefined ? limit : Math.min(resolved, limit);
+  }
+  return resolved;
 }
 
 /**
@@ -520,6 +545,9 @@ export async function generateRoutes(app: FastifyInstance) {
       let reasoningEffort: "low" | "medium" | "high" | "maximum" | null = null;
       let verbosity: "low" | "medium" | "high" | null = null;
       let wrapFormat: "xml" | "markdown" | "none" = "xml";
+      const connectionMaxContext = normalizeMaxContext(conn.maxContext);
+      const knownModelContext = normalizeMaxContext(findKnownModel(conn.provider as APIProvider, conn.model)?.context);
+      let effectiveMaxContext = minContextLimit(connectionMaxContext, knownModelContext);
 
       // Determine whether agents are enabled for this chat (needed by assembler + agent pipeline)
       // Conversation mode chats never run roleplay agents — force agents off.
@@ -575,6 +603,8 @@ export async function generateRoutes(app: FastifyInstance) {
                 embedConn.provider as string,
                 embedBaseUrl,
                 embedConn.apiKey as string,
+                embedConn.maxContext as number | null | undefined,
+                embedConn.openrouterProvider as string | null | undefined,
               );
               const embeddings = await embeddingProvider.embed([recentMsgs], embeddingModel);
               chatContextEmbedding = embeddings[0] ?? null;
@@ -646,13 +676,10 @@ export async function generateRoutes(app: FastifyInstance) {
           reasoningEffort = assembled.parameters.reasoningEffort ?? null;
           verbosity = assembled.parameters.verbosity ?? null;
 
-          // Auto-resolve max context from model's known context window
-          if (assembled.parameters.useMaxContext) {
-            const knownModel = findKnownModel(conn.provider as APIProvider, conn.model);
-            if (knownModel) {
-              if (knownModel.maxOutput) maxTokens = knownModel.maxOutput;
-            }
-          }
+          const presetMaxContext = assembled.parameters.useMaxContext
+            ? knownModelContext
+            : normalizeMaxContext(assembled.parameters.maxContext);
+          effectiveMaxContext = minContextLimit(effectiveMaxContext, presetMaxContext);
 
           // Persist updated per-chat entry state overrides (ephemeral countdown)
           if (assembled.updatedEntryStateOverrides) {
@@ -674,7 +701,9 @@ export async function generateRoutes(app: FastifyInstance) {
           const charRow = await chars.getById(cid);
           if (charRow) {
             const d = JSON.parse(charRow.data as string);
-            let status: string = d.extensions?.conversationStatus ?? "online";
+            // Schedules are chat-scoped. If this chat has no schedule for the character,
+            // don't inherit a stale conversationStatus from some other chat.
+            let status = "online";
             let activity = "";
             let todaySchedule = "";
             const schedule = schedules[cid];
@@ -880,7 +909,13 @@ export async function generateRoutes(app: FastifyInstance) {
         const newlyConsolidatedWeeks: Record<string, { summary: string; keyDetails: string[] }> = {};
 
         if (bucketsToSummarize.length > 0) {
-          const summaryProvider = createLLMProvider(conn.provider, baseUrl, conn.apiKey);
+          const summaryProvider = createLLMProvider(
+            conn.provider,
+            baseUrl,
+            conn.apiKey,
+            conn.maxContext,
+            conn.openrouterProvider,
+          );
           const summaryResults = await Promise.allSettled(
             bucketsToSummarize.map(async (bucket) => {
               const chatLog = bucket.msgs.map((m) => `${m.author}: ${m.content}`).join("\n");
@@ -1003,7 +1038,13 @@ export async function generateRoutes(app: FastifyInstance) {
 
         let weekSummariesChanged = false;
         if (weeksToConsolidate.length > 0) {
-          const weekProvider = createLLMProvider(conn.provider, baseUrl, conn.apiKey);
+          const weekProvider = createLLMProvider(
+            conn.provider,
+            baseUrl,
+            conn.apiKey,
+            conn.maxContext,
+            conn.openrouterProvider,
+          );
           const weekResults = await Promise.allSettled(
             weeksToConsolidate.map(async ({ weekKey, days }) => {
               // Sort days chronologically within the week
@@ -1835,7 +1876,7 @@ export async function generateRoutes(app: FastifyInstance) {
       }
 
       // Create provider
-      const provider = createLLMProvider(conn.provider, baseUrl, conn.apiKey);
+      const provider = createLLMProvider(conn.provider, baseUrl, conn.apiKey, conn.maxContext, conn.openrouterProvider);
 
       // ────────────────────────────────────────
       // Agent Pipeline: resolve enabled agents
@@ -1850,7 +1891,11 @@ export async function generateRoutes(app: FastifyInstance) {
       // Build ResolvedAgent array — each agent gets its own provider/model or falls back to chat connection
       const resolvedAgents: ResolvedAgent[] = [];
       // Cache per-connection providers so agents sharing the same connection batch together
-      const agentProviderCache = new Map<string, { provider: ReturnType<typeof createLLMProvider>; model: string }>();
+      const agentProviderCache = new Map<string, { provider: BaseLLMProvider; model: string }>();
+      agentProviderCache.set(LOCAL_SIDECAR_CONNECTION_ID, {
+        provider: getLocalSidecarProvider(),
+        model: LOCAL_SIDECAR_MODEL,
+      });
 
       // Check if there's a connection marked as default for all agents
       const defaultAgentConn = await connections.getDefaultForAgents();
@@ -1858,7 +1903,13 @@ export async function generateRoutes(app: FastifyInstance) {
         const dBaseUrl = resolveBaseUrl(defaultAgentConn);
         if (dBaseUrl) {
           agentProviderCache.set(defaultAgentConn.id, {
-            provider: createLLMProvider(defaultAgentConn.provider, dBaseUrl, defaultAgentConn.apiKey),
+            provider: createLLMProvider(
+              defaultAgentConn.provider,
+              dBaseUrl,
+              defaultAgentConn.apiKey,
+              defaultAgentConn.maxContext,
+              defaultAgentConn.openrouterProvider,
+            ),
             model: defaultAgentConn.model,
           });
         }
@@ -1883,7 +1934,13 @@ export async function generateRoutes(app: FastifyInstance) {
             if (agentConn) {
               const agentBaseUrl = resolveBaseUrl(agentConn);
               if (agentBaseUrl) {
-                agentProvider = createLLMProvider(agentConn.provider, agentBaseUrl, agentConn.apiKey);
+                agentProvider = createLLMProvider(
+                  agentConn.provider,
+                  agentBaseUrl,
+                  agentConn.apiKey,
+                  agentConn.maxContext,
+                  agentConn.openrouterProvider,
+                );
                 agentModel = agentConn.model;
                 agentProviderCache.set(effectiveConnectionId, { provider: agentProvider, model: agentModel });
               }
@@ -2287,7 +2344,7 @@ export async function generateRoutes(app: FastifyInstance) {
         // Determine if a separate scene model handles bg/music/sfx/widgets
         const sceneConnectionId = (setupConfig?.sceneConnectionId as string) || null;
         const sidecarCfg = sidecarModelService.getConfig();
-        const sidecarHandlesScene = sidecarCfg.useForGameScene && sidecarModelService.isReady();
+        const sidecarHandlesScene = sidecarCfg.useForGameScene && (await isSidecarInferenceAvailable());
         const hasSceneModel = !!sceneConnectionId || sidecarHandlesScene;
 
         // Approximate turn number: count user messages in the chat (each user message ≈ 1 turn)
@@ -2727,6 +2784,7 @@ export async function generateRoutes(app: FastifyInstance) {
         activatedLorebookEntries: null,
         writableLorebookIds: null,
         chatSummary: ((chatMeta.summary as string) ?? "").trim() || null,
+        streaming: input.streaming,
         signal: abortController.signal,
       };
 
@@ -3820,6 +3878,36 @@ export async function generateRoutes(app: FastifyInstance) {
           m.content = m.content.replace(/\n([ \t]*\n){2,}/g, "\n\n");
         }
 
+        const toProviderMessages = (
+          promptMessages: Array<{
+            role: "system" | "user" | "assistant";
+            content: string;
+            images?: string[];
+            providerMetadata?: Record<string, unknown>;
+          }>,
+        ): ChatMessage[] =>
+          promptMessages.map((message) => ({
+            role: message.role,
+            content: message.content,
+            ...(message.images?.length ? { images: message.images } : {}),
+            ...(message.providerMetadata ? { providerMetadata: message.providerMetadata } : {}),
+          }));
+
+        let finalPromptSent: ChatMessage[] = [];
+        let effectiveMaxTokensForSend = maxTokens;
+        const fitPromptForSend = (candidateMessages: ChatMessage[]): ChatMessage[] => {
+          const fit = fitMessagesToContext(
+            candidateMessages,
+            { maxContext: effectiveMaxContext, maxTokens },
+            connectionMaxContext,
+          );
+          finalPromptSent = fit.messages;
+          effectiveMaxTokensForSend = fit.maxTokens ?? maxTokens;
+          return fit.messages;
+        };
+
+        const initialProviderMessages = fitPromptForSend(toProviderMessages(messagesForGen));
+
         // Reset per-character accumulators
         fullResponse = "";
         fullThinking = "";
@@ -3849,12 +3937,13 @@ export async function generateRoutes(app: FastifyInstance) {
           // Emit debug prompt if requested (only for first character to avoid spam)
           if (input.debugMode && targetCharId === respondingCharIds[0]) {
             const debugPayload = {
-              messages: messagesForGen,
+              messages: initialProviderMessages,
               parameters: {
                 model: conn.model,
                 provider: conn.provider,
                 temperature,
-                maxTokens,
+                maxTokens: effectiveMaxTokensForSend,
+                maxContext: effectiveMaxContext ?? connectionMaxContext ?? null,
                 topP,
                 topK: topK || undefined,
                 frequencyPenalty: frequencyPenalty || undefined,
@@ -3877,13 +3966,14 @@ export async function generateRoutes(app: FastifyInstance) {
             const effTemp = tempSuppressed ? "N/A" : temperature;
             const effTopP = tempSuppressed ? "N/A" : topP;
 
-            console.log("\n[Debug] Prompt sent to model (%d messages):", messagesForGen.length);
+            console.log("\n[Debug] Prompt sent to model (%d messages):", initialProviderMessages.length);
             console.log(
-              "  Model: %s (%s)  Temp: %s  MaxTokens: %s  TopP: %s  TopK: %s  Thinking: %s  Effort: %s  Verbosity: %s  Stream: %s",
+              "  Model: %s (%s)  Temp: %s  MaxTokens: %s  MaxContext: %s  TopP: %s  TopK: %s  Thinking: %s  Effort: %s  Verbosity: %s  Stream: %s",
               conn.model,
               conn.provider,
               effTemp,
-              maxTokens,
+              effectiveMaxTokensForSend,
+              effectiveMaxContext ?? connectionMaxContext ?? "default",
               effTopP,
               topK || "default",
               showThoughts,
@@ -3891,19 +3981,14 @@ export async function generateRoutes(app: FastifyInstance) {
               verbosity ?? "default",
               input.streaming,
             );
-            for (const m of messagesForGen) {
+            for (const m of initialProviderMessages) {
               console.log("  [%s] %s", m.role.toUpperCase(), m.content);
             }
           }
 
           if (enableTools && provider.chatComplete) {
             const MAX_TOOL_ROUNDS = 5;
-            let loopMessages: ChatMessage[] = messagesForGen.map((m) => ({
-              role: m.role as "system" | "user" | "assistant",
-              content: m.content,
-              ...(m.images?.length ? { images: m.images } : {}),
-              ...((m as any).providerMetadata ? { providerMetadata: (m as any).providerMetadata } : {}),
-            }));
+            let loopMessages: ChatMessage[] = initialProviderMessages;
 
             // Extract Spotify credentials from the Spotify agent settings (if configured)
             const spotifyAgent = resolvedAgents.find((a) => a.type === "spotify");
@@ -4038,10 +4123,12 @@ export async function generateRoutes(app: FastifyInstance) {
 
               let result;
               try {
+                loopMessages = fitPromptForSend(loopMessages);
                 result = await provider.chatComplete(loopMessages, {
                   model: conn.model,
                   temperature,
-                  maxTokens,
+                  maxTokens: effectiveMaxTokensForSend,
+                  maxContext: effectiveMaxContext,
                   topP,
                   topK: topK || undefined,
                   frequencyPenalty: frequencyPenalty || undefined,
@@ -4163,10 +4250,12 @@ export async function generateRoutes(app: FastifyInstance) {
               if (round === MAX_TOOL_ROUNDS - 1) {
                 // Reset per-character accumulator for final round content
                 const prevLen = fullResponse.length;
+                loopMessages = fitPromptForSend(loopMessages);
                 const finalResult = await provider.chatComplete(loopMessages, {
                   model: conn.model,
                   temperature,
-                  maxTokens,
+                  maxTokens: effectiveMaxTokensForSend,
+                  maxContext: effectiveMaxContext,
                   topP,
                   topK: topK || undefined,
                   frequencyPenalty: frequencyPenalty || undefined,
@@ -4197,10 +4286,11 @@ export async function generateRoutes(app: FastifyInstance) {
               }
             }
           } else {
-            const gen = provider.chat(messagesForGen, {
+            const gen = provider.chat(initialProviderMessages, {
               model: conn.model,
               temperature,
-              maxTokens,
+              maxTokens: effectiveMaxTokensForSend,
+              maxContext: effectiveMaxContext,
               topP,
               topK: topK || undefined,
               frequencyPenalty: frequencyPenalty || undefined,
@@ -4240,20 +4330,14 @@ export async function generateRoutes(app: FastifyInstance) {
 
           const durationMs = Date.now() - genStartTime;
 
-          // ── Auto-detect <think>/<thinking> tags in model output ──
-          // Some models emit reasoning wrapped in <think>...</think> or <thinking>...</thinking>
-          // even when the provider doesn't natively separate reasoning tokens.
-          // Extract this into `fullThinking` so it displays under the brain icon.
-          const thinkTagRe = /^(\s*)<(think(?:ing)?)>([\s\S]*?)<\/\2>/i;
-          const thinkMatch = fullResponse.match(thinkTagRe);
-          if (thinkMatch) {
-            const extractedThinking = thinkMatch[3]!.trim();
-            if (extractedThinking) {
-              // Append to any provider-native thinking already captured
-              fullThinking = fullThinking ? fullThinking + "\n\n" + extractedThinking : extractedThinking;
+          // Some models inline reasoning blocks instead of using provider-native
+          // thinking channels. Lift those blocks into message.extra.thinking.
+          const inlineThinking = extractLeadingThinkingBlocks(fullResponse);
+          if (inlineThinking.stripped) {
+            if (inlineThinking.thinking) {
+              fullThinking = fullThinking ? fullThinking + "\n\n" + inlineThinking.thinking : inlineThinking.thinking;
             }
-            // Strip the entire think block from the visible response
-            fullResponse = fullResponse.slice(thinkMatch[0].length).trimStart();
+            fullResponse = inlineThinking.content;
             reply.raw.write(`data: ${JSON.stringify({ type: "content_replace", data: fullResponse })}\n\n`);
           }
 
@@ -4372,7 +4456,8 @@ export async function generateRoutes(app: FastifyInstance) {
                 model: conn.model,
                 provider: conn.provider,
                 temperature: temperature ?? null,
-                maxTokens: maxTokens ?? null,
+                maxTokens: effectiveMaxTokensForSend ?? null,
+                maxContext: effectiveMaxContext ?? connectionMaxContext ?? null,
                 showThoughts: showThoughts ?? null,
                 reasoningEffort: resolvedEffort ?? reasoningEffort ?? null,
                 verbosity: verbosity ?? null,
@@ -4395,7 +4480,7 @@ export async function generateRoutes(app: FastifyInstance) {
               extraUpdate.contextInjections = contextInjections;
             }
             // Cache the final prompt (what was actually sent to the model) for Peek Prompt
-            extraUpdate.cachedPrompt = messagesForGen.map((m) => ({ role: m.role, content: m.content }));
+            extraUpdate.cachedPrompt = finalPromptSent.map((m) => ({ role: m.role, content: m.content }));
             await chats.updateMessageExtra(savedMsg.id, extraUpdate);
             // Also persist on the active swipe so switching swipes preserves per-swipe extras
             const refreshedMsg = await chats.getMessage(savedMsg.id);
@@ -4823,6 +4908,14 @@ export async function generateRoutes(app: FastifyInstance) {
               console.log("[game_state_patch] world-state:", JSON.stringify(worldStatePatch));
               reply.raw.write(`data: ${JSON.stringify({ type: "game_state_patch", data: worldStatePatch })}\n\n`);
 
+              const existingGameMap = (chatMeta.gameMap as GameMap | null) ?? null;
+              const syncedGameMap = syncGameMapPartyPosition(existingGameMap, newLocation);
+              if (syncedGameMap && syncedGameMap !== existingGameMap) {
+                chatMeta.gameMap = syncedGameMap;
+                await chats.updateMetadata(input.chatId, chatMeta);
+                sendSseEvent(reply, { type: "game_map_update", data: syncedGameMap });
+              }
+
               // Auto-populate journal: location change
               const prevLocation = prevSnap?.location as string | null;
               if (newLocation && newLocation !== prevLocation) {
@@ -4894,6 +4987,8 @@ export async function generateRoutes(app: FastifyInstance) {
                       const imgModel = imgConnFull.model || "";
                       const imgBaseUrl = imgConnFull.baseUrl || "https://image.pollinations.ai";
                       const imgApiKey = imgConnFull.apiKey || "";
+                      const imgSource = (imgConnFull as any).imageGenerationSource || imgModel;
+                      const imgServiceHint = imgConnFull.imageService || imgSource;
 
                       for (const npc of charsNeedingAvatars) {
                         try {
@@ -4906,7 +5001,7 @@ export async function generateRoutes(app: FastifyInstance) {
                               1000,
                             );
 
-                          const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, {
+                          const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, imgServiceHint, {
                             prompt,
                             model: imgModel,
                             width: 512,
@@ -5368,7 +5463,14 @@ export async function generateRoutes(app: FastifyInstance) {
             if (shouldGenerate && imagePrompt) {
               // Resolve connections: text LLM = connectionId, image gen = settings.imageConnectionId
               const illustratorAgent = resolvedAgents.find((a) => a.id === result.agentId || a.type === "illustrator");
-              const imgConnId = (illustratorAgent?.settings?.imageConnectionId as string) ?? null;
+              let imgConnId = (illustratorAgent?.settings?.imageConnectionId as string) ?? null;
+              if (!imgConnId) {
+                const defaultImageConn = (await connections.list()).find(
+                  (c) =>
+                    c.provider === "image_generation" && (c.defaultForAgents === true || c.defaultForAgents === "true"),
+                );
+                imgConnId = defaultImageConn?.id ?? null;
+              }
               if (imgConnId) {
                 // Queue image generation to run after the result loop so it doesn't
                 // block other agents (game state, trackers, consistency editor).
@@ -5384,6 +5486,8 @@ export async function generateRoutes(app: FastifyInstance) {
                     const imgModel = imgConnFull.model || "";
                     const imgBaseUrl = imgConnFull.baseUrl || "https://image.pollinations.ai";
                     const imgApiKey = imgConnFull.apiKey || "";
+                    const imgSource = (imgConnFull as any).imageGenerationSource || imgModel;
+                    const imgServiceHint = imgConnFull.imageService || imgSource;
 
                     // Use selfie resolution from chat metadata if set, otherwise fall back to aspect ratio defaults
                     const selfieRes = (chatMeta.selfieResolution as string) ?? "";
@@ -5482,13 +5586,13 @@ export async function generateRoutes(app: FastifyInstance) {
                       }
                     }
 
-                    const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, {
+                    const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, imgServiceHint, {
                       prompt: fullPrompt,
                       negativePrompt: negativePrompt || undefined,
                       model: imgModel,
                       width: imgWidth,
                       height: imgHeight,
-                      comfyWorkflow: (imgConnFull as any).comfyuiWorkflow || undefined,
+                      comfyWorkflow: imgConnFull.comfyuiWorkflow || undefined,
                       referenceImage: illustratorRefImage,
                       referenceImages: illustratorRefImages,
                     });
@@ -5582,7 +5686,7 @@ export async function generateRoutes(app: FastifyInstance) {
                     data: {
                       agentType: "illustrator",
                       error:
-                        "No image generation connection set on the Illustrator agent. Go to Settings → Agents → Illustrator and assign an Image Generation Connection.",
+                        "No image generation connection set on the Illustrator agent, and no default Illustrator image connection is configured. Go to Settings → Connections and mark an image generation connection as the default for Illustrator, or assign one directly in Settings → Agents → Illustrator.",
                     },
                   })}\n\n`,
                 );
@@ -5821,7 +5925,13 @@ export async function generateRoutes(app: FastifyInstance) {
                   const selfieTags: string[] = Array.isArray(chatMeta.selfieTags)
                     ? (chatMeta.selfieTags as string[])
                     : [];
-                  const promptBuilder = createLLMProvider(conn.provider, baseUrl, conn.apiKey);
+                  const promptBuilder = createLLMProvider(
+                    conn.provider,
+                    baseUrl,
+                    conn.apiKey,
+                    conn.maxContext,
+                    conn.openrouterProvider,
+                  );
                   const promptResult = await promptBuilder.chatComplete(
                     [
                       {
@@ -5864,17 +5974,19 @@ export async function generateRoutes(app: FastifyInstance) {
                     const imgModel = imgConnFull.model || "";
                     const imgBaseUrl = imgConnFull.baseUrl || "https://image.pollinations.ai";
                     const imgApiKey = imgConnFull.apiKey || "";
+                    const imgSource = (imgConnFull as any).imageGenerationSource || imgModel;
 
                     // Parse selfie resolution from chat metadata (default 512×768 portrait)
                     const selfieRes = (chatMeta.selfieResolution as string) ?? "512x768";
                     const [selfieW, selfieH] = selfieRes.split("x").map(Number) as [number, number];
 
-                    const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, {
+                    const serviceHint = imgConnFull.imageService || "";
+                    const imageResult = await generateImage(imgModel, imgBaseUrl, imgApiKey, serviceHint || imgSource, {
                       prompt: imagePrompt,
                       model: imgModel,
                       width: selfieW || 512,
                       height: selfieH || 768,
-                      comfyWorkflow: (imgConnFull as any).comfyuiWorkflow || undefined,
+                      comfyWorkflow: imgConnFull.comfyuiWorkflow || undefined,
                       referenceImage: readAvatarBase64(charRow?.avatarPath as string | null),
                     });
 

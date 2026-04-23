@@ -17,6 +17,8 @@
 // Assistant commands (Professor Mari):
 // - [create_persona: name="...", description="...", personality="...", appearance="..."]
 // - [create_character: name="...", description="...", personality="...", first_message="...", scenario="..."]
+// - [update_character: name="...", description="...", personality="...", first_message="...", scenario="...", backstory="...", appearance="...", mes_example="...", creator_notes="...", system_prompt="...", post_history_instructions="..."]
+// - [update_persona: name="...", description="...", personality="...", appearance="...", scenario="...", backstory="..."]
 // - [create_chat: character="...", mode="conversation|roleplay"]
 // - [navigate: panel="...", tab="..."]
 // - [fetch: type="character|persona|lorebook|chat|preset", name="..."]
@@ -100,6 +102,12 @@ export interface UpdateCharacterCommand {
   personality?: string;
   firstMessage?: string;
   scenario?: string;
+  backstory?: string;
+  appearance?: string;
+  mesExample?: string;
+  creatorNotes?: string;
+  systemPrompt?: string;
+  postHistoryInstructions?: string;
 }
 
 export interface UpdatePersonaCommand {
@@ -108,6 +116,8 @@ export interface UpdatePersonaCommand {
   description?: string;
   personality?: string;
   appearance?: string;
+  scenario?: string;
+  backstory?: string;
 }
 
 export interface CreateChatCommand {
@@ -297,14 +307,26 @@ export function parseCharacterCommands(content: string): {
     const cmd: UpdateCharacterCommand = { type: "update_character", name: "" };
     const nameMatch = params.match(/name="([^"]+)"/);
     if (nameMatch) cmd.name = nameMatch[1]!;
-    const descMatch = params.match(/description="([^"]+)"/);
+    const descMatch = params.match(/description="([^"]*)"/);
     if (descMatch) cmd.description = descMatch[1]!;
-    const persMatch = params.match(/personality="([^"]+)"/);
+    const persMatch = params.match(/personality="([^"]*)"/);
     if (persMatch) cmd.personality = persMatch[1]!;
-    const fmMatch = params.match(/first_message="([^"]+)"/);
+    const fmMatch = params.match(/first_message="([^"]*)"/);
     if (fmMatch) cmd.firstMessage = fmMatch[1]!;
-    const scenMatch = params.match(/scenario="([^"]+)"/);
+    const scenMatch = params.match(/scenario="([^"]*)"/);
     if (scenMatch) cmd.scenario = scenMatch[1]!;
+    const backstoryMatch = params.match(/backstory="([^"]*)"/);
+    if (backstoryMatch) cmd.backstory = backstoryMatch[1]!;
+    const appearanceMatch = params.match(/appearance="([^"]*)"/);
+    if (appearanceMatch) cmd.appearance = appearanceMatch[1]!;
+    const mesExampleMatch = params.match(/mes_example="([^"]*)"/);
+    if (mesExampleMatch) cmd.mesExample = mesExampleMatch[1]!;
+    const creatorNotesMatch = params.match(/creator_notes="([^"]*)"/);
+    if (creatorNotesMatch) cmd.creatorNotes = creatorNotesMatch[1]!;
+    const systemPromptMatch = params.match(/system_prompt="([^"]*)"/);
+    if (systemPromptMatch) cmd.systemPrompt = systemPromptMatch[1]!;
+    const phiMatch = params.match(/post_history_instructions="([^"]*)"/);
+    if (phiMatch) cmd.postHistoryInstructions = phiMatch[1]!;
     if (cmd.name) commands.push(cmd);
   }
 
@@ -313,12 +335,16 @@ export function parseCharacterCommands(content: string): {
     const cmd: UpdatePersonaCommand = { type: "update_persona", name: "" };
     const nameMatch = params.match(/name="([^"]+)"/);
     if (nameMatch) cmd.name = nameMatch[1]!;
-    const descMatch = params.match(/description="([^"]+)"/);
+    const descMatch = params.match(/description="([^"]*)"/);
     if (descMatch) cmd.description = descMatch[1]!;
-    const persMatch = params.match(/personality="([^"]+)"/);
+    const persMatch = params.match(/personality="([^"]*)"/);
     if (persMatch) cmd.personality = persMatch[1]!;
-    const appMatch = params.match(/appearance="([^"]+)"/);
+    const appMatch = params.match(/appearance="([^"]*)"/);
     if (appMatch) cmd.appearance = appMatch[1]!;
+    const scenarioMatch = params.match(/scenario="([^"]*)"/);
+    if (scenarioMatch) cmd.scenario = scenarioMatch[1]!;
+    const backstoryMatch = params.match(/backstory="([^"]*)"/);
+    if (backstoryMatch) cmd.backstory = backstoryMatch[1]!;
     if (cmd.name) commands.push(cmd);
   }
 

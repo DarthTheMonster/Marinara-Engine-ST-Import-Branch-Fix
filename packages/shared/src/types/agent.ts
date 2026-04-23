@@ -23,6 +23,7 @@ export type AgentResultType =
   | "continuity_check"
   | "director_event"
   | "lorebook_update"
+  | "character_card_update"
   | "prompt_review"
   | "background_change"
   | "character_tracker_update"
@@ -96,8 +97,26 @@ export interface AgentContext {
   mainResponse: string | null;
   /** Current game state (if any) */
   gameState: import("./game-state.js").GameState | null;
-  /** Active characters in the chat */
-  characters: Array<{ id: string; name: string; description: string }>;
+  /**
+   * Active characters in the chat. The base shape (id/name/description) is
+   * always populated. Richer card fields are optional — they're present in
+   * practice, but agents should not rely on them unless needed. The Card
+   * Evolution Auditor agent uses them to emit exact-match oldText edits.
+   */
+  characters: Array<{
+    id: string;
+    name: string;
+    description: string;
+    personality?: string;
+    scenario?: string;
+    creatorNotes?: string;
+    systemPrompt?: string;
+    backstory?: string;
+    appearance?: string;
+    mesExample?: string;
+    firstMes?: string;
+    postHistoryInstructions?: string;
+  }>;
   /** User persona info */
   persona: {
     name: string;
@@ -139,6 +158,7 @@ export const BUILT_IN_AGENT_IDS = {
   QUEST: "quest",
   ILLUSTRATOR: "illustrator",
   LOREBOOK_KEEPER: "lorebook-keeper",
+  CARD_EVOLUTION_AUDITOR: "card-evolution-auditor",
   PROMPT_REVIEWER: "prompt-reviewer",
   COMBAT: "combat",
   BACKGROUND: "background",
@@ -302,6 +322,15 @@ export const BUILT_IN_AGENTS: BuiltInAgentMeta[] = [
     phase: "post_processing",
     enabledByDefault: false,
     category: "misc",
+  },
+  {
+    id: "card-evolution-auditor",
+    name: "Card Evolution Auditor",
+    description:
+      "Detects when character card fields (description, personality, scenario, etc.) have become outdated based on roleplay events and proposes edits for user approval.",
+    phase: "post_processing",
+    enabledByDefault: false,
+    category: "tracker",
   },
   {
     id: "combat",
@@ -469,6 +498,7 @@ export const DEFAULT_AGENT_TOOLS: Record<string, string[]> = {
   quest: ["update_game_state"],
   illustrator: [],
   "lorebook-keeper": ["search_lorebook"],
+  "card-evolution-auditor": [],
   "prompt-reviewer": [],
   combat: ["roll_dice", "update_game_state"],
   background: [],
@@ -511,6 +541,49 @@ export interface LorebookUpdateResult {
     keys: string[];
     tag?: string;
   };
+}
+
+/**
+ * Single proposed edit to a character card field.
+ *
+ * Unlike LorebookUpdateResult, these edits are NEVER applied automatically —
+ * the server emits them as an agent_result SSE event and the client shows
+ * a confirmation modal. Character cards are more sensitive than lorebook
+ * entries because they define the character's identity.
+ */
+export const EDITABLE_CHARACTER_CARD_FIELDS = [
+  "description",
+  "personality",
+  "scenario",
+  "first_mes",
+  "mes_example",
+  "creator_notes",
+  "system_prompt",
+  "post_history_instructions",
+  "backstory",
+  "appearance",
+] as const;
+
+export type EditableCharacterCardField = (typeof EDITABLE_CHARACTER_CARD_FIELDS)[number];
+
+export interface CharacterCardFieldUpdate {
+  /** Stable target character id from the <character id="..."> context block. */
+  characterId: string;
+  /** Currently only "update" is supported; reserved for future create/delete. */
+  action: "update";
+  /** Which stored character-card field this edit targets. */
+  field: EditableCharacterCardField;
+  /** The existing field value the agent observed. */
+  oldText: string;
+  /** The proposed replacement text. */
+  newText: string;
+  /** Why the agent thinks this edit is warranted (shown to the user). */
+  reason: string;
+}
+
+/** Data shape for a character_card_update agent result. */
+export interface CharacterCardUpdateResult {
+  updates: CharacterCardFieldUpdate[];
 }
 
 // ──────────────────────────────────────────────
